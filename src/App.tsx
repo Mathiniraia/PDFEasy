@@ -260,12 +260,22 @@ export default function App() {
 
     if (rawUsage) {
       try {
-        currentData = JSON.parse(rawUsage);
+        const parsed = JSON.parse(rawUsage);
+        // Reset count if it's a new day
+        if (parsed.date === todayStr) {
+          currentData = parsed;
+        } else {
+          // New day — reset count
+          currentData = { date: todayStr, count: 0, unlocked: false, plan: "" };
+          localStorage.setItem("pdf_app_usage", JSON.stringify(currentData));
+        }
       } catch (e) { }
     }
 
-    // Intercept on 3rd attempt
-    if (currentData.count >= 3) {
+    const DAILY_LIMIT = 10; // 10 free uses per day
+
+    // Block if limit reached
+    if (currentData.count >= DAILY_LIMIT) {
       setIsPaywallOpen(true);
       return false; // blocked
     }
@@ -277,8 +287,8 @@ export default function App() {
     localStorage.setItem("pdf_app_usage", JSON.stringify(currentData));
     setUsageCount(updatedCount);
 
-    // If they just reached 3, open modal proactively to upgrade but let the current compilation process completed successfully
-    if (updatedCount >= 3) {
+    // Show upgrade prompt after 8 uses but still allow the action
+    if (updatedCount >= 8) {
       setTimeout(() => {
         setIsPaywallOpen(true);
       }, 800);

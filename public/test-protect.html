@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Protect PDF Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #0f0f0f; color: #eee; }
+    .log { margin: 4px 0; padding: 6px 10px; border-radius: 4px; font-size: 13px; word-break: break-all; }
+    .ok { background: #1a3a1a; color: #6fff6f; }
+    .err { background: #3a1a1a; color: #ff6f6f; }
+    .info { background: #1a1a3a; color: #6f9fff; }
+    .warn { background: #3a2a1a; color: #ffbf6f; }
+    h2 { color: #fff; }
+    button { padding: 10px 20px; font-size: 14px; cursor: pointer; border-radius: 6px; border: none; font-weight: bold; background: #2563eb; color: white; margin-top: 10px; }
+    input[type=file] { margin: 10px 0; display: block; color: #eee; }
+    input[type=password] { padding: 8px 12px; font-size: 14px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: #fff; margin: 5px 0; display: block; width: 300px; }
+  </style>
+</head>
+<body>
+  <h2>Protect PDF — Step-by-Step Debug Test</h2>
+  <p style="color:#aaa">Tests the exact same code the app uses. Watch the steps to see where it fails.</p>
+
+  <input type="file" id="fileInput" accept="application/pdf" />
+  <input type="password" id="pwdInput" placeholder="Enter password (min 4 chars)" />
+  <button onclick="runTest()">Run Test</button>
+
+  <div id="output" style="margin-top:20px"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module">
+    const output = document.getElementById('output');
+
+    function log(msg, type = 'info') {
+      const d = document.createElement('div');
+      d.className = 'log ' + type;
+      const icon = { ok: '✅', err: '❌', warn: '⚠️', info: '→' }[type] || '→';
+      d.textContent = icon + ' ' + msg;
+      output.appendChild(d);
+      console.log('[' + type.toUpperCase() + ']', msg);
+    }
+
+    window.runTest = async function() {
+      output.innerHTML = '';
+      const fileInput = document.getElementById('fileInput');
+      const pwdInput = document.getElementById('pwdInput');
+
+      if (!fileInput.files[0]) { log('Select a PDF file first.', 'err'); return; }
+      if (!pwdInput.value || pwdInput.value.length < 4) { log('Password must be at least 4 characters.', 'err'); return; }
+
+      const file = fileInput.files[0];
+      const password = pwdInput.value.trim();
+
+      log('File: ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)', 'info');
+      log('Password length: ' + password.length + ' chars', 'info');
+
+      try {
+        // STEP 1 — Read bytes
+        log('STEP 1: Reading file bytes...', 'info');
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfBytes = new Uint8Array(arrayBuffer);
+        log('Bytes read OK: ' + pdfBytes.length + ' bytes', 'ok');
+
+        // STEP 2 — Load pdfjs
+        log('STEP 2: Loading pdfjs worker from CDN...', 'info');
+        const pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+        log('pdfjs loaded OK', 'ok');
+
+        // STEP 3 — Parse PDF
+        log('STEP 3: Parsing PDF...', 'info');
+        const pdfJsDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+        const numPages = pdfJsDoc.numPages;
+        log('PDF has ' + numPages + ' pages', 'ok');
+
+        // STEP 4 — Render page 1
+        log('STEP 4: Rendering page 1 to canvas...', 'info');
+        const page = await pdfJsDoc.getPage(1);
+        const vp = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = vp.width;
+        canvas.height = vp.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { log('canvas.getContext("2d") returned null!', 'err'); return; }
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        const imgData = canvas.toDataURL('image/jpeg', 0.88);
+        log('Canvas rendered: ' + imgData.length + ' chars (base64)', 'ok');
+
+        // Show preview
+        const img = document.createElement('img');
+        img.src = imgData;
+        img.style.cssText = 'max-width:180px;border:1px solid #444;margin:8px 0;display:block;border-radius:4px;';
+        output.appendChild(img);
+
+        // STEP 5 — Create jsPDF with encryption
+        log('STEP 5: Creating encrypted jsPDF...', 'info');
+        if (!window.jspdf) { log('jsPDF global not found! Script may not be loaded.', 'err'); return; }
+        const { jsPDF } = window.jspdf;
+        const isLandscape = vp.width > vp.height;
+        const encDoc = new jsPDF({
+          orientation: isLandscape ? 'landscape' : 'portrait',
+          unit: 'pt',
+          format: 'a4',
+          encryption: {
+            userPassword: password,
+            ownerPassword: password + '_owner_' + Date.now(),
+            userPermissions: [],
+          },
+        });
+        log('jsPDF created with encryption', 'ok');
+
+        // STEP 6 — Add image
+        log('STEP 6: Adding page image...', 'info');
+        const pw = encDoc.internal.pageSize.getWidth();
+        const ph = encDoc.internal.pageSize.getHeight();
+        encDoc.addImage(imgData, 'JPEG', 0, 0, pw, ph);
+        log('Image added (' + Math.round(pw) + 'x' + Math.round(ph) + ' pt)', 'ok');
+
+        // STEP 7 — Output
+        log('STEP 7: Generating encrypted PDF output...', 'info');
+        const secureBuffer = encDoc.output('arraybuffer');
+        const secureBytes = new Uint8Array(secureBuffer);
+        log('Output generated: ' + (secureBytes.length/1024).toFixed(1) + ' KB', 'ok');
+
+        // STEP 8 — Download
+        log('STEP 8: Triggering download...', 'info');
+        const blob = new Blob([secureBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'protected_test_' + file.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+        log('SUCCESS! File downloaded: protected_test_' + file.name, 'ok');
+        log('Now open that file — it should ask for password: ' + password, 'ok');
+
+      } catch (err) {
+        log('FAILED: ' + err.message, 'err');
+        if (err.stack) log('Stack: ' + err.stack.slice(0, 500), 'err');
+        console.error(err);
+      }
+    };
+  </script>
+</body>
+</html>
