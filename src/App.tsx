@@ -15,6 +15,8 @@ import { TOOLS } from "./toolsData";
 import { ToolDefinition } from "./types";
 import ToolWorkspace from "./components/tools/ToolWorkspace";
 import PaywallModal from "./components/payment/PaywallModal";
+import { signInWithPopup } from "firebase/auth";
+import { auth, googleProvider } from "./firebase";
 
 export default function App() {
   // Custom router state
@@ -515,13 +517,21 @@ export default function App() {
                     <>
                       <button
                         type="button"
-                        onClick={() => {
-                          const email = "mathinirai.a@gmail.com";
-                          localStorage.setItem("user_email", email);
-                          setCurrentUserEmail(email);
-                          setShowAuthModal(false);
-                          resetAuthForm();
-                          syncUserSession("Google User", email, premiumUnlocked ? "pro" : "free", "google");
+                        onClick={async () => {
+                          try {
+                            const result = await signInWithPopup(auth, googleProvider);
+                            const user = result.user;
+                            const email = user.email || "google@user.com";
+                            localStorage.setItem("user_email", email);
+                            setCurrentUserEmail(email);
+                            setShowAuthModal(false);
+                            resetAuthForm();
+                            syncUserSession(user.displayName || "Google User", email, premiumUnlocked ? "pro" : "free", "google");
+                            navigateToSlug("");
+                          } catch (error) {
+                            console.error("Google login failed", error);
+                            setAuthError("Google login failed. Please try again.");
+                          }
                         }}
                         className="w-full border border-neutral-200 hover:border-neutral-300 bg-white hover:bg-neutral-50 rounded-xl px-4 py-3 text-xs font-medium text-neutral-700 flex items-center justify-center gap-3 transition shadow-3xs cursor-pointer mb-6"
                       >

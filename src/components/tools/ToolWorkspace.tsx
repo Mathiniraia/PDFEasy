@@ -661,7 +661,7 @@ export default function ToolWorkspace({
     const jpegQuality = compressionMode === "extreme" ? 0.45 : 0.72;
 
     // Render each page to canvas then re-encode as JPEG to genuinely reduce size
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs`;
     const loadingTask = pdfjsLib.getDocument({ data: f.pdfBytes });
     const pdfJsDoc = await loadingTask.promise;
     const numPages = pdfJsDoc.numPages;
@@ -712,6 +712,8 @@ export default function ToolWorkspace({
     if (!password || password.trim().length === 0) {
       throw new Error("Password encryption key has not been entered.");
     }
+    const capturedPassword = passwordRef.current;
+    const capturedExisting = existingPasswordRef.current;
 
     let activePreviews = pdfPreviews;
     if (activePreviews.length === 0) {
