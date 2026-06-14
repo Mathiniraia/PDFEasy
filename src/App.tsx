@@ -15,7 +15,7 @@ import { TOOLS } from "./toolsData";
 import { ToolDefinition } from "./types";
 import ToolWorkspace from "./components/tools/ToolWorkspace";
 import PaywallModal from "./components/payment/PaywallModal";
-import { signInWithPopup } from "firebase/auth";
+import { signInWithPopup, onAuthStateChanged } from "firebase/auth";
 import { auth, googleProvider } from "./firebase";
 
 export default function App() {
@@ -220,6 +220,51 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // FIREBASE AUTH STATE LIFECYCLE HANDLER
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const email = user.email || "";
+        setCurrentUserEmail(email);
+        localStorage.setItem("user_email", email);
+
+        const displayName = user.displayName || email.split("@")[0] || "Google User";
+        const avatarUrl = user.photoURL || null;
+        const phone = user.phoneNumber || null;
+        const authProvider = email ? "google" : "phone";
+
+        // Automated background sync request
+        try {
+          const response = await fetch("/api/crm/sync-user", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              displayName,
+              avatarUrl,
+              email: email || null,
+              phone,
+              authProvider,
+              planStatus: premiumUnlocked ? "pro" : "free",
+            }),
+          });
+
+          if (response.ok) {
+            console.log("Successfully dropped encrypted user envelope into database box!");
+          } else {
+            const errText = await response.text();
+            console.error("Database box rejected the envelope:", errText);
+          }
+        } catch (error: any) {
+          console.error("Database box rejected the envelope:", error.message || error);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [premiumUnlocked]);
+
   // LOCAL STORAGE DAILY ATTEMPTS HANDLER
   useEffect(() => {
     const todayStr = new Date().toISOString().split("T")[0];
@@ -400,7 +445,12 @@ export default function App() {
                   {currentUserEmail.charAt(0).toUpperCase()}
                 </span>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    try {
+                      await auth.signOut();
+                    } catch (err) {
+                      console.error("Sign out failed:", err);
+                    }
                     localStorage.removeItem("user_email");
                     setCurrentUserEmail(null);
                   }}
@@ -519,14 +569,9 @@ export default function App() {
                         type="button"
                         onClick={async () => {
                           try {
-                            const result = await signInWithPopup(auth, googleProvider);
-                            const user = result.user;
-                            const email = user.email || "google@user.com";
-                            localStorage.setItem("user_email", email);
-                            setCurrentUserEmail(email);
+                            await signInWithPopup(auth, googleProvider);
                             setShowAuthModal(false);
                             resetAuthForm();
-                            syncUserSession(user.displayName || "Google User", email, premiumUnlocked ? "pro" : "free", "google");
                             navigateToSlug("");
                           } catch (error) {
                             console.error("Google login failed", error);
