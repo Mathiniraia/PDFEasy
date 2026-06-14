@@ -1050,32 +1050,27 @@ export default function App() {
                       <button
                         key={item.slug}
                         onClick={() => navigateToSlug(item.slug)}
-                        className="group relative flex flex-col justify-between h-[210px] p-6 rounded-2xl bg-white border border-neutral-300/70 shadow-xs transition-all duration-300 hover:-translate-y-1.5 hover:border-neutral-900 hover:shadow-md cursor-pointer text-left"
+                        className="group relative flex flex-col justify-between h-[230px] p-6 rounded-2xl bg-white border border-neutral-300/70 shadow-xs transition-all duration-300 hover:-translate-y-1.5 hover:border-neutral-900 hover:shadow-md cursor-pointer text-left"
                         id={`tool_card_${item.slug}`}
                       >
-                        {/* High Performance badge */}
-                        <span className="absolute top-4 right-4 bg-amber-500/10 text-amber-700 border border-amber-500/20 text-[9px] font-bold uppercase tracking-wider font-mono px-2 py-0.5 rounded-md flex items-center gap-1 select-none z-10">
-                          <Sparkles size={9} /> High Usage
-                        </span>
-
                         <div className="w-full">
-                          <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-all duration-300 border ${colors.bg}`}>
-                            {item.slug === "merge-pdf" && <Layers size={20} />}
-                            {item.slug === "split-pdf" && <Scissors size={20} />}
-                            {item.slug === "jpg-to-pdf" && <FileImage size={20} />}
-                            {item.slug === "pdf-to-jpg" && <FileText size={20} />}
-                            {item.slug === "compress-pdf" && <Minimize2 size={20} />}
+                          <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 transition-all duration-300 border ${colors.bg}`}>
+                            {item.slug === "merge-pdf" && <Layers size={24} />}
+                            {item.slug === "split-pdf" && <Scissors size={24} />}
+                            {item.slug === "jpg-to-pdf" && <FileImage size={24} />}
+                            {item.slug === "pdf-to-jpg" && <FileText size={24} />}
+                            {item.slug === "compress-pdf" && <Minimize2 size={24} />}
                           </div>
 
                           <h3 className="text-base font-bold text-neutral-900 flex items-center justify-between tracking-tight group-hover:text-black transition-colors leading-snug">
                             {item.name}
                           </h3>
-                          <p className="text-[13px] text-neutral-500 leading-relaxed mt-1.5 line-clamp-2 pr-12">
+                          <p className="text-[13px] text-neutral-500 leading-relaxed mt-1.5 line-clamp-2">
                             {item.description}
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between mt-auto pt-4 w-full">
+                        <div className="flex items-center justify-between mt-auto pt-5 w-full">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 group-hover:text-neutral-900 transition-colors font-mono">
                             Launch Tool
                           </span>
@@ -1104,24 +1099,24 @@ export default function App() {
                       <button
                         key={item.slug}
                         onClick={() => navigateToSlug(item.slug)}
-                        className="group relative flex flex-col justify-between h-[210px] p-6 rounded-2xl bg-white border border-neutral-200/60 shadow-xs transition-all duration-300 hover:-translate-y-1.5 hover:border-neutral-900 hover:shadow-md cursor-pointer text-left"
+                        className="group relative flex flex-col justify-between h-[230px] p-6 rounded-2xl bg-white border border-neutral-200/60 shadow-xs transition-all duration-300 hover:-translate-y-1.5 hover:border-neutral-900 hover:shadow-md cursor-pointer text-left"
                         id={`tool_card_${item.slug}`}
                       >
                         <div className="w-full">
-                          <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-all duration-300 border ${colors.bg}`}>
-                            {item.slug === "merge-pdf" && <Layers size={20} />}
-                            {item.slug === "split-pdf" && <Scissors size={20} />}
-                            {item.slug === "jpg-to-pdf" && <FileImage size={20} />}
-                            {item.slug === "pdf-to-jpg" && <FileText size={20} />}
-                            {item.slug === "compress-pdf" && <Minimize2 size={20} />}
-                            {item.slug === "pdf-to-word" && <FileText size={20} />}
-                            {item.slug === "word-to-pdf" && <FileText size={20} />}
-                            {item.slug === "delete-pdf-pages" && <Trash2 size={20} />}
-                            {item.slug === "edit-pdf" && <PenTool size={20} />}
-                            {item.slug === "rotate-pdf" && <RotateCw size={20} />}
-                            {item.slug === "unlock-pdf" && <Lock size={20} />}
-                            {item.slug === "protect-pdf" && <Shield size={20} />}
-                            {item.slug === "sign-pdf" && <FileSignature size={20} />}
+                          <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 transition-all duration-300 border ${colors.bg}`}>
+                            {item.slug === "merge-pdf" && <Layers size={24} />}
+                            {item.slug === "split-pdf" && <Scissors size={24} />}
+                            {item.slug === "jpg-to-pdf" && <FileImage size={24} />}
+                            {item.slug === "pdf-to-jpg" && <FileText size={24} />}
+                            {item.slug === "compress-pdf" && <Minimize2 size={24} />}
+                            {item.slug === "pdf-to-word" && <FileText size={24} />}
+                            {item.slug === "word-to-pdf" && <FileText size={24} />}
+                            {item.slug === "delete-pdf-pages" && <Trash2 size={24} />}
+                            {item.slug === "edit-pdf" && <PenTool size={24} />}
+                            {item.slug === "rotate-pdf" && <RotateCw size={24} />}
+                            {item.slug === "unlock-pdf" && <Lock size={24} />}
+                            {item.slug === "protect-pdf" && <Shield size={24} />}
+                            {item.slug === "sign-pdf" && <FileSignature size={24} />}
                           </div>
 
                           <h3 className="text-base font-bold text-neutral-900 flex items-center justify-between tracking-tight group-hover:text-black transition-colors leading-snug">
@@ -1132,7 +1127,7 @@ export default function App() {
                           </p>
                         </div>
 
-                        <div className="flex items-center justify-between mt-auto pt-4 w-full">
+                        <div className="flex items-center justify-between mt-auto pt-5 w-full">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400 group-hover:text-neutral-900 transition-colors font-mono">
                             Launch Tool
                           </span>
