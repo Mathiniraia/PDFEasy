@@ -12,6 +12,53 @@
       gtag('js', new Date());
       gtag('config', 'G-FP6WJGYGCD');
     </script>
+    <!-- ========================================================================
+         Mastermind CRM Analytics Tracking Script
+         ========================================================================
+         Project ID: CRM-889922
+         Instructions: Paste this block in the <head> of every page you want to track.
+    -->
+    <script>
+    (function() {
+      const CRM_PROJECT_ID = "CRM-889922";
+      const CRM_API_ENDPOINT = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:3001/api/admin/log-page-visit'
+        : 'https://' + window.location.hostname.replace('5173', '3001') + '/api/admin/log-page-visit';
+
+      const trackVisit = () => {
+        const userId = localStorage.getItem('pdfeasy_user_id') || localStorage.getItem('user_id') || 'usr_anonymous';
+        const pageSlug = window.location.pathname;
+
+        console.log(`[CRM Analytics] Connecting Project ${CRM_PROJECT_ID} - Logged visit on: ${pageSlug}`);
+
+        fetch(CRM_API_ENDPOINT, {
+          method: 'POST',
+          mode: 'cors',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-email': 'mathinirai.a@gmail.com'
+          },
+          body: JSON.stringify({
+            userId: userId,
+            slug: pageSlug
+          })
+        })
+        .then(res => res.json())
+        .then(response => {
+          console.log('[CRM Analytics] Connection verified, log sent:', response);
+        })
+        .catch(error => {
+          console.warn('[CRM Analytics] Connection offline:', error.message);
+        });
+      };
+
+      // Run on page load
+      trackVisit();
+
+      // Hook popstate to support client-side routing (Vite SPA) transitions
+      window.addEventListener('popstate', trackVisit);
+    })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
