@@ -17,6 +17,7 @@ import ToolWorkspace from "./components/tools/ToolWorkspace";
 import PaywallModal from "./components/payment/PaywallModal";
 import { signInWithPopup, signInWithRedirect, onAuthStateChanged } from "firebase/auth";
 import { auth, googleProvider } from "./firebase";
+import { logUserActivity } from "./lib/logUserActivity";
 
 export default function App() {
   // Custom router state
@@ -281,6 +282,51 @@ export default function App() {
         } catch (error: any) {
           console.error("Database box rejected the envelope:", error.message || error);
         }
+
+        // ── SUPABASE DIRECT ACTIVITY LOG ────────────────────────────────
+        // Writes to user_page_visits table immediately after auth.
+        // Fire-and-forget — does not block UI.
+        logUserActivity(user.uid, displayName, "homepage_conversion_flow");
+
+        // ── CRM NETWORK BRIDGE ──────────────────────────────────────────
+        // Fires silently in the background after every successful auth event.
+        // Does NOT block UI or await — pure fire-and-forget.
+        (async () => {
+          try {
+            const crmBase = (import.meta as any).env?.VITE_CRM_BACKEND_URL
+              || "http://localhost:3001";
+            const crmRes = await fetch(
+              `${crmBase}/api/admin/log-page-visit`,
+              {
+                method: "POST",
+                mode: "cors",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-admin-email": "mathinirai.a@gmail.com",
+                },
+                body: JSON.stringify({
+                  userId: user.uid,
+                  slug: "homepage_conversion_flow",
+                  name: displayName,
+                  email: email || null,
+                }),
+              }
+            );
+            if (crmRes.ok) {
+              console.log("🚀 Network Bridge SUCCESS: Data pushed to CRM!");
+            } else {
+              console.warn(
+                "❌ Network Bridge BROKEN: CRM rejected data channel with status:",
+                crmRes.status
+              );
+            }
+          } catch (bridgeErr: any) {
+            console.warn(
+              "❌ Network Bridge BROKEN: CRM rejected data channel with status:",
+              bridgeErr.message || bridgeErr
+            );
+          }
+        })();
       }
     });
 
