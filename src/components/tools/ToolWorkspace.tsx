@@ -15,7 +15,7 @@ import { PDFFileInfo, ToolWorkspaceProps } from "../../types";
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { encryptPDF } from "@pdfsmaller/pdf-encrypt";
-import { decryptPDF, isEncrypted } from "@pdfsmaller/pdf-decrypt";
+import { decryptPDF, isEncrypted as checkIsEncrypted } from "@pdfsmaller/pdf-decrypt";
 import * as pdfjsLib from "pdfjs-dist";
 
 export default function ToolWorkspace({
@@ -728,7 +728,7 @@ export default function ToolWorkspace({
     let workingBytes = f.pdfBytes;
 
     // If PDF is already encrypted, decrypt it first so we can re-encrypt with new password
-    const alreadyEncrypted = await isEncrypted(workingBytes);
+    const alreadyEncrypted = await checkIsEncrypted(workingBytes);
     console.log("[Protect] PDF already encrypted:", alreadyEncrypted);
 
     if (alreadyEncrypted) {
@@ -784,7 +784,7 @@ export default function ToolWorkspace({
     }
 
     // Check if it's actually encrypted
-    const encrypted = await isEncrypted(f.pdfBytes);
+    const encrypted = await checkIsEncrypted(f.pdfBytes);
     console.log("[Unlock] Is encrypted:", encrypted);
     if (!encrypted) {
       throw new Error("This PDF is not password-protected — no unlock needed.");
