@@ -19,11 +19,8 @@ import { decryptPDF, isEncrypted as checkIsEncrypted } from "@pdfsmaller/pdf-dec
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-<<<<<<< HEAD
 // Set the worker source once at module level to match the installed pdfjs-dist version.
 // Using a Vite ?url import guarantees the worker version matches the library.
-=======
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 export default function ToolWorkspace({
@@ -273,15 +270,11 @@ export default function ToolWorkspace({
   const generatePreviews = async (pdfDocBytes: Uint8Array, userPassword?: string): Promise<string[]> => {
     try {
       setPdfPreviews([]);
-<<<<<<< HEAD
       // Worker source is set at module level via the ?url import.
       
       // IMPORTANT: Copy the bytes so pdf.js doesn't detach the underlying ArrayBuffer
       // which would break subsequent pdf-lib operations on the same file.
       const bytesCopy = new Uint8Array(pdfDocBytes);
-=======
-
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
       const loadingTask = pdfjsLib.getDocument({ 
         data: bytesCopy,
         password: userPassword
@@ -523,23 +516,8 @@ export default function ToolWorkspace({
     const f = files[0];
     if (!f || !f.pdfBytes) throw new Error("Please add your document");
 
-<<<<<<< HEAD
     const bytesCopy = new Uint8Array(f.pdfBytes);
     const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
-=======
-    const splitPassword = passwordRef.current.trim() || password.trim();
-    let sourceBytes = f.pdfBytes;
-
-    const encInfo = await checkIsEncrypted(sourceBytes);
-    if (encInfo.encrypted) {
-      if (!splitPassword) {
-        throw new Error("This PDF is password-protected. Enter the password first.");
-      }
-      sourceBytes = await decryptPDF(sourceBytes, splitPassword);
-    }
-
-    const pdfDoc = await PDFDocument.load(sourceBytes);
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
     const count = pdfDoc.getPageCount();
 
     // Use selected split list or range
@@ -744,14 +722,10 @@ export default function ToolWorkspace({
     const jpegQuality = compressionMode === "extreme" ? 0.45 : 0.72;
 
     // Render each page to canvas then re-encode as JPEG to genuinely reduce size
-<<<<<<< HEAD
     // Worker source is set at module level via the ?url import.
     // IMPORTANT: Copy bytes so pdf.js doesn't detach the underlying ArrayBuffer
     const bytesCopy = new Uint8Array(f.pdfBytes);
     const loadingTask = pdfjsLib.getDocument({ data: bytesCopy });
-=======
-    const loadingTask = pdfjsLib.getDocument({ data: f.pdfBytes, password: password || undefined });
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
     const pdfJsDoc = await loadingTask.promise;
     const numPages = pdfJsDoc.numPages;
 
@@ -814,12 +788,10 @@ export default function ToolWorkspace({
     if (!capturedPassword) {
       throw new Error("Password encryption key has not been entered.");
     }
-<<<<<<< HEAD
     if (password.trim().length < 8) {
       throw new Error("Password must be at least 8 characters.");
     }
 
-    const capturedPassword = passwordRef.current;
     const capturedConfirm = confirmPasswordRef.current;
 
     if (capturedConfirm !== capturedPassword) {
@@ -831,29 +803,14 @@ export default function ToolWorkspace({
     const pdfBlob = new Blob([f.pdfBytes], { type: "application/pdf" });
     formData.append("file", pdfBlob, f.name);
     formData.append("password", capturedPassword);
-=======
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
 
     const response = await fetch("/api/protect-pdf", {
       method: "POST",
       body: formData,
     });
 
-<<<<<<< HEAD
     if (!response.ok) {
       let errMsg = "Encryption failed on the server.";
-=======
-    // If PDF is already encrypted, decrypt it first so we can re-encrypt with new password
-    const encInfo = await checkIsEncrypted(workingBytes);
-    console.log("[Protect] PDF already encrypted:", encInfo.encrypted);
-
-    if (encInfo.encrypted) {
-      if (!capturedExisting) {
-        throw new Error(
-          "This PDF is already password-protected. Enter its current password in the \"Existing password\" field."
-        );
-      }
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
       try {
         const errBody = await response.json();
         errMsg = errBody.error || errMsg;
@@ -861,17 +818,8 @@ export default function ToolWorkspace({
       throw new Error(errMsg);
     }
 
-<<<<<<< HEAD
     const encryptedArrayBuffer = await response.arrayBuffer();
     const encryptedBytes = new Uint8Array(encryptedArrayBuffer);
-=======
-    // Encrypt with the new password (AES-256 standard)
-    const ownerPassword = `${capturedPassword}_owner_${Date.now()}`;
-    console.log("[Protect] Encrypting with new password...");
-    const encryptedBytes = await encryptPDF(workingBytes, capturedPassword, { ownerPassword });
-    console.log("[Protect] Encryption done. Output size:", encryptedBytes.length);
-
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
     const finalBlob = new Blob([encryptedBytes], { type: "application/pdf" });
 
     // Get page count from original (unencrypted) bytes via pdf-lib
@@ -1532,7 +1480,6 @@ export default function ToolWorkspace({
 
                     {/* PROTECT PDF — Password & Confirm Password (Lovable Design) */}
                     {tool.slug === "protect-pdf" && (
-<<<<<<< HEAD
                       <div className="space-y-4">
                         {/* File pill */}
                         <div className="flex items-center gap-3 bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3">
@@ -1576,64 +1523,6 @@ export default function ToolWorkspace({
                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                               )}
                             </button>
-=======
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-800 tracking-wide uppercase mb-2">Configure File Passkey Encryption</label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <span className="text-xs text-neutral-500 block mb-1">Target protect file:</span>
-                            <div className="flex items-center gap-2 py-1">
-                              <FileText size={16} className="text-neutral-600" />
-                              <span className="text-xs font-semibold text-neutral-800 truncate max-w-xs">{files[0].name}</span>
-                            </div>
-                            <p className="text-[10px] text-neutral-400 mt-1">This uses localized stream encryption to scramble elements securely.</p>
-                            {pdfAlreadyEncrypted && (
-                              <p className="text-[10px] text-amber-700 mt-2 flex items-center gap-1 font-sans">
-                                <AlertTriangle size={11} /> This file is already protected. Enter its current password before setting a new one.
-                              </p>
-                            )}
-                          </div>
-                          <div className="space-y-3">
-                            {pdfAlreadyEncrypted && (
-                              <div>
-                                <label className="block text-xs text-neutral-500 mb-1 font-medium font-sans">Existing password:</label>
-                                <div className="relative">
-                                  <input
-                                    type="password"
-                                    value={existingPassword}
-                                    onChange={(e) => {
-                                      existingPasswordRef.current = e.target.value;
-                                      setExistingPassword(e.target.value);
-                                    }}
-                                    placeholder="Current document password..."
-                                    className="w-full text-xs bg-white border border-neutral-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-neutral-900 font-mono"
-                                    id="password_input_protect_existing"
-                                  />
-                                  <Lock size={14} className="absolute left-3 top-2.5 text-neutral-400" />
-                                </div>
-                              </div>
-                            )}
-                            <div>
-                              <label className="block text-xs text-neutral-500 mb-1 font-medium font-sans">New password:</label>
-                              <div className="relative">
-                                <input 
-                                  type="password" 
-                                  value={password}
-                                  onChange={(e) => {
-                                    passwordRef.current = e.target.value;
-                                    setPassword(e.target.value);
-                                  }}
-                                  placeholder="Enter secure lock key..."
-                                  className="w-full text-xs bg-white border border-neutral-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-neutral-900 font-mono"
-                                  id="password_input_protect"
-                                />
-                                <Lock size={14} className="absolute left-3 top-2.5 text-neutral-400" />
-                              </div>
-                              <p className="text-[9px] text-amber-600 mt-1.5 flex items-center gap-1 font-sans">
-                                <AlertTriangle size={11} /> Keep a note of it. Passwords cannot be retrieved due to high-security offline design.
-                              </p>
-                            </div>
->>>>>>> 862fd0cf9e1a1b5175b23674a719bca2446e454e
                           </div>
                         </div>
 
