@@ -14,9 +14,14 @@ import { PDFDocument, degrees } from "pdf-lib";
 import { PDFFileInfo, ToolWorkspaceProps } from "../../types";
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
-import { encryptPDF } from "@pdfsmaller/pdf-encrypt";
 import { decryptPDF, isEncrypted as checkIsEncrypted } from "@pdfsmaller/pdf-decrypt";
+
 import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+// Set the worker source once at module level to match the installed pdfjs-dist version.
+// Using a Vite ?url import guarantees the worker version matches the library.
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 export default function ToolWorkspace({
   tool,
@@ -47,6 +52,9 @@ export default function ToolWorkspace({
   const [pagesToSplit, setPagesToSplit] = useState<number[]>([]);
   // protect-pdf / unlock-pdf
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [existingPassword, setExistingPassword] = useState(""); // for already-encrypted PDFs
   // rotate-pdf (track rotation of each page if single-file)
   const [pageRotations, setPageRotations] = useState<number[]>([]); // values: 0, 90, 180, 270
@@ -71,6 +79,7 @@ export default function ToolWorkspace({
 
   // Refs to always capture latest passwords without stale closure in async handlers
   const passwordRef = useRef<string>("");
+  const confirmPasswordRef = useRef<string>("");
   const existingPasswordRef = useRef<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -87,6 +96,10 @@ export default function ToolWorkspace({
     setPagesToSplit([]);
     setPassword("");
     passwordRef.current = "";
+    setConfirmPassword("");
+    confirmPasswordRef.current = "";
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setExistingPassword("");
     existingPasswordRef.current = "";
     setPageRotations([]);
@@ -168,7 +181,10 @@ export default function ToolWorkspace({
 
         if (!isJpgToPdf) {
           try {
-            const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: false });
+            // Use ignoreEncryption:true to get page count even from encrypted PDFs.
+            // Copy bytes to avoid ArrayBuffer detachment issues.
+            const loadBytes = new Uint8Array(bytes);
+            const pdfDoc = await PDFDocument.load(loadBytes, { ignoreEncryption: true });
             pageCount = pdfDoc.getPageCount();
             fileIsLocked = false;
           } catch (e: any) {
@@ -242,10 +258,13 @@ export default function ToolWorkspace({
   const generatePreviews = async (pdfDocBytes: Uint8Array, userPassword?: string): Promise<string[]> => {
     try {
       setPdfPreviews([]);
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs`;
+      // Worker source is set at module level via the ?url import.
       
+      // IMPORTANT: Copy the bytes so pdf.js doesn't detach the underlying ArrayBuffer
+      // which would break subsequent pdf-lib operations on the same file.
+      const bytesCopy = new Uint8Array(pdfDocBytes);
       const loadingTask = pdfjsLib.getDocument({ 
-        data: pdfDocBytes,
+        data: bytesCopy,
         password: userPassword
       });
       const pdf = await loadingTask.promise;
@@ -450,7 +469,9 @@ export default function ToolWorkspace({
     for (const f of files) {
       if (!f.pdfBytes) continue;
       totalOrigBytesSize += f.size;
-      const donorDoc = await PDFDocument.load(f.pdfBytes, { ignoreEncryption: true });
+      // Copy bytes to avoid ArrayBuffer detachment issues
+      const bytesCopy = new Uint8Array(f.pdfBytes);
+      const donorDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
       const donorPageCount = donorDoc.getPageCount();
       const pagesToCopy = Array.from({ length: donorPageCount }, (_, i) => i);
       const copiedPages = await mergedDoc.copyPages(donorDoc, pagesToCopy);
@@ -472,12 +493,13 @@ export default function ToolWorkspace({
     setStage(3);
   };
 
-  // 2. SPLIT ENGINE (Creates a ZIP with single page PDFs!)
+  // 2. SPLIT ENGINE
   const doSplitPDF = async () => {
     const f = files[0];
     if (!f || !f.pdfBytes) throw new Error("Please add your document");
 
-    const pdfDoc = await PDFDocument.load(f.pdfBytes, { password: password || undefined, ignoreEncryption: !password } as any);
+    const bytesCopy = new Uint8Array(f.pdfBytes);
+    const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
     const count = pdfDoc.getPageCount();
 
     // Use selected split list or range
@@ -487,24 +509,41 @@ export default function ToolWorkspace({
       throw new Error("No pages selected for splitting.");
     }
 
-    const zip = new JSZip();
+    let finalBlob: Blob;
+    let finalFileName = "";
 
-    for (const idx of selectedIndices) {
+    // If only 1 page is selected, just export it directly as PDF instead of ZIP
+    if (selectedIndices.length === 1) {
+      const idx = selectedIndices[0];
       const singlePageDoc = await PDFDocument.create();
       const copiedPages = await singlePageDoc.copyPages(pdfDoc, [idx]);
       singlePageDoc.addPage(copiedPages[0]);
       
       const singlePageBytes = await singlePageDoc.save();
-      zip.file(`${f.name.replace(".pdf", "")}_page_${idx + 1}.pdf`, singlePageBytes);
+      finalBlob = new Blob([singlePageBytes], { type: "application/pdf" });
+      finalFileName = `${f.name.replace(/\.pdf$/i, "")}_page_${idx + 1}.pdf`;
+    } else {
+      // Multiple pages -> create a ZIP file
+      const zip = new JSZip();
+
+      for (const idx of selectedIndices) {
+        const singlePageDoc = await PDFDocument.create();
+        const copiedPages = await singlePageDoc.copyPages(pdfDoc, [idx]);
+        singlePageDoc.addPage(copiedPages[0]);
+        
+        const singlePageBytes = await singlePageDoc.save();
+        zip.file(`${f.name.replace(/\.pdf$/i, "")}_page_${idx + 1}.pdf`, singlePageBytes);
+      }
+
+      finalBlob = await zip.generateAsync({ type: "blob" });
+      finalFileName = `split_pages_${f.name.replace(/\.pdf$/i, "")}.zip`;
     }
 
-    const zipBlob = await zip.generateAsync({ type: "blob" });
-
     setOriginalSize(f.size);
-    setNewSize(zipBlob.size);
+    setNewSize(finalBlob.size);
     setPageCountOutput(selectedIndices.length);
-    setOutputBlob(zipBlob);
-    setOutputFileName(`split_pages_${f.name.replace(".pdf", "")}.zip`);
+    setOutputBlob(finalBlob);
+    setOutputFileName(finalFileName);
     setStage(3);
   };
 
@@ -549,16 +588,18 @@ export default function ToolWorkspace({
     setStage(3);
   };
 
-  // 4. PDF TO JPG ENGINE (Extract high-quality JPEG files directly inside ZIP!)
+  // 4. PDF TO JPG ENGINE
+  // Uses pdf.js to render each page to canvas, then exports as JPEG.
+  // CRITICAL: generatePreviews returns the data-URL array directly — do NOT
+  // re-read `pdfPreviews` state since React setState is asynchronous.
   const doPdfToJpg = async () => {
     const f = files[0];
     if (!f || !f.pdfBytes) throw new Error("No PDF loaded");
 
-    let activePreviews = pdfPreviews;
-    if (activePreviews.length === 0) {
-      await generatePreviews(f.pdfBytes, password);
-      activePreviews = pdfPreviews;
-    }
+    // Use the return value, NOT the React state (which updates asynchronously)
+    let activePreviews = pdfPreviews.length > 0
+      ? pdfPreviews
+      : await generatePreviews(f.pdfBytes, password);
 
     if (activePreviews.length === 0) {
       throw new Error("Could not convert PDF pages to images. The file may be corrupted or password-protected.");
@@ -570,16 +611,16 @@ export default function ToolWorkspace({
     if (activePreviews.length === 1) {
       const resp = await fetch(activePreviews[0]);
       finalBlob = await resp.blob();
-      filename = `${f.name.replace(".pdf", "")}_page_1.jpg`;
+      filename = `${f.name.replace(/\.pdf$/i, "")}_page_1.jpg`;
     } else {
       const zip = new JSZip();
       for (let i = 0; i < activePreviews.length; i++) {
         const imgDataUrl = activePreviews[i];
         const base64Data = imgDataUrl.split(",")[1];
-        zip.file(`${f.name.replace(".pdf", "")}_page_${i + 1}.jpg`, base64Data, { base64: true });
+        zip.file(`${f.name.replace(/\.pdf$/i, "")}_page_${i + 1}.jpg`, base64Data, { base64: true });
       }
       finalBlob = await zip.generateAsync({ type: "blob" });
-      filename = `${f.name.replace(".pdf", "")}_images.zip`;
+      filename = `${f.name.replace(/\.pdf$/i, "")}_images.zip`;
     }
 
     setOriginalSize(f.size);
@@ -595,7 +636,8 @@ export default function ToolWorkspace({
     const f = files[0];
     if (!f || !f.pdfBytes) throw new Error("No PDF loaded");
 
-    const pdfDoc = await PDFDocument.load(f.pdfBytes, { password: password || undefined, ignoreEncryption: !password } as any);
+    const bytesCopy = new Uint8Array(f.pdfBytes);
+    const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
     const totalCount = pdfDoc.getPageCount();
 
     const keepIndices: number[] = [];
@@ -629,7 +671,8 @@ export default function ToolWorkspace({
     const f = files[0];
     if (!f || !f.pdfBytes) throw new Error("No PDF loaded");
 
-    const pdfDoc = await PDFDocument.load(f.pdfBytes, { password: password || undefined, ignoreEncryption: !password } as any);
+    const bytesCopy = new Uint8Array(f.pdfBytes);
+    const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
     const pages = pdfDoc.getPages();
 
     for (let i = 0; i < pages.length; i++) {
@@ -661,16 +704,15 @@ export default function ToolWorkspace({
     const jpegQuality = compressionMode === "extreme" ? 0.45 : 0.72;
 
     // Render each page to canvas then re-encode as JPEG to genuinely reduce size
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs`;
-    const loadingTask = pdfjsLib.getDocument({ data: f.pdfBytes });
+    // Worker source is set at module level via the ?url import.
+    // IMPORTANT: Copy bytes so pdf.js doesn't detach the underlying ArrayBuffer
+    const bytesCopy = new Uint8Array(f.pdfBytes);
+    const loadingTask = pdfjsLib.getDocument({ data: bytesCopy });
     const pdfJsDoc = await loadingTask.promise;
     const numPages = pdfJsDoc.numPages;
 
-    const compressedDoc = new jsPDF({
-      orientation: "portrait",
-      unit: "pt",
-      format: "a4",
-    });
+    // We build the jsPDF doc page-by-page, matching each source page's orientation
+    let compressedDoc: InstanceType<typeof jsPDF> | null = null;
 
     for (let i = 1; i <= numPages; i++) {
       const page = await pdfJsDoc.getPage(i);
@@ -682,14 +724,25 @@ export default function ToolWorkspace({
       await page.render({ canvasContext: ctx, viewport } as any).promise;
       const imgData = canvas.toDataURL("image/jpeg", jpegQuality);
 
-      if (i > 1) {
-        const isLandscape = viewport.width > viewport.height;
-        compressedDoc.addPage("a4", isLandscape ? "landscape" : "portrait");
+      const isLandscape = viewport.width > viewport.height;
+      const pageFormat: [number, number] = [viewport.width, viewport.height];
+
+      if (i === 1) {
+        // Create the jsPDF doc with the FIRST page's actual dimensions
+        compressedDoc = new jsPDF({
+          orientation: isLandscape ? "landscape" : "portrait",
+          unit: "pt",
+          format: pageFormat,
+        });
+      } else {
+        compressedDoc!.addPage(pageFormat, isLandscape ? "landscape" : "portrait");
       }
-      const pw = compressedDoc.internal.pageSize.getWidth();
-      const ph = compressedDoc.internal.pageSize.getHeight();
-      compressedDoc.addImage(imgData, "JPEG", 0, 0, pw, ph);
+      const pw = compressedDoc!.internal.pageSize.getWidth();
+      const ph = compressedDoc!.internal.pageSize.getHeight();
+      compressedDoc!.addImage(imgData, "JPEG", 0, 0, pw, ph);
     }
+
+    if (!compressedDoc) throw new Error("PDF has no pages to compress.");
 
     const outBuffer = compressedDoc.output("arraybuffer");
     const outBytes = new Uint8Array(outBuffer);
@@ -704,59 +757,54 @@ export default function ToolWorkspace({
   };
 
   // 8. PROTECT ENGINE
-  // Uses @pdfsmaller/pdf-encrypt — real AES encryption directly on PDF binary.
-  // No canvas rasterization. Text stays sharp & searchable. Works like Smallpdf but 100% local.
+  // Sends the PDF to the server-side /api/protect-pdf endpoint which uses
+  // qpdf-WASM for real AES-256 encryption. No client-side WASM overhead.
+  // The server returns the encrypted PDF as a binary stream.
   const doProtectPDF = async () => {
     const f = files[0];
     if (!f || !f.pdfBytes) throw new Error("No PDF loaded");
     if (!password || password.trim().length === 0) {
       throw new Error("Password encryption key has not been entered.");
     }
+    if (password.trim().length < 8) {
+      throw new Error("Password must be at least 8 characters.");
+    }
+
     const capturedPassword = passwordRef.current;
-    const capturedExisting = existingPasswordRef.current;
+    const capturedConfirm = confirmPasswordRef.current;
 
-    let activePreviews = pdfPreviews;
-    if (activePreviews.length === 0) {
-      await generatePreviews(f.pdfBytes);
-      activePreviews = pdfPreviews;
+    if (capturedConfirm !== capturedPassword) {
+      throw new Error("Passwords do not match. Please re-enter and confirm your password.");
     }
 
-    if (activePreviews.length === 0) {
-      throw new Error("Unable to render document pages for secure encryption.");
-    }
+    // Build multipart form data
+    const formData = new FormData();
+    const pdfBlob = new Blob([f.pdfBytes], { type: "application/pdf" });
+    formData.append("file", pdfBlob, f.name);
+    formData.append("password", capturedPassword);
 
-    let workingBytes = f.pdfBytes;
+    const response = await fetch("/api/protect-pdf", {
+      method: "POST",
+      body: formData,
+    });
 
-    // If PDF is already encrypted, decrypt it first so we can re-encrypt with new password
-    const alreadyEncrypted = await checkIsEncrypted(workingBytes);
-    console.log("[Protect] PDF already encrypted:", alreadyEncrypted);
-
-    if (alreadyEncrypted) {
-      if (!capturedExisting) {
-        throw new Error(
-          "This PDF is already password-protected. Enter its current password in the \"Existing password\" field."
-        );
-      }
+    if (!response.ok) {
+      let errMsg = "Encryption failed on the server.";
       try {
-        workingBytes = await decryptPDF(workingBytes, capturedExisting);
-        console.log("[Protect] Decrypted existing encryption OK");
-      } catch {
-        throw new Error("Wrong existing password. Please check and try again.");
-      }
+        const errBody = await response.json();
+        errMsg = errBody.error || errMsg;
+      } catch { /* ignore */ }
+      throw new Error(errMsg);
     }
 
-    // Encrypt with the new password (AES-256 standard)
-    const ownerPassword = `${capturedPassword}_owner_${Date.now()}`;
-    console.log("[Protect] Encrypting with new password...");
-    const encryptedBytes = await encryptPDF(workingBytes, capturedPassword, { ownerPassword: `${capturedPassword}_owner_${Date.now()}` });
-    console.log("[Protect] Encryption done. Output size:", encryptedBytes.length);
-
+    const encryptedArrayBuffer = await response.arrayBuffer();
+    const encryptedBytes = new Uint8Array(encryptedArrayBuffer);
     const finalBlob = new Blob([encryptedBytes], { type: "application/pdf" });
 
-    // Get page count from pdf-lib (works on decrypted bytes)
+    // Get page count from original (unencrypted) bytes via pdf-lib
     let pageCount = 0;
     try {
-      const tempDoc = await PDFDocument.load(workingBytes);
+      const tempDoc = await PDFDocument.load(f.pdfBytes);
       pageCount = tempDoc.getPageCount();
     } catch { pageCount = 1; }
 
@@ -769,9 +817,10 @@ export default function ToolWorkspace({
   };
 
 
+
   // 9. UNLOCK ENGINE
-  // Uses @pdfsmaller/pdf-decrypt — strips AES/RC4 encryption directly on PDF binary.
-  // No quality loss, preserves all text and formatting.
+  // Sends the encrypted PDF to the server-side /api/unlock-pdf endpoint which uses
+  // qpdf-WASM to decrypt and return the raw binary. No client-side WASM overhead.
   const doUnlockPDF = async () => {
     const f = files[0];
     if (!f || !f.pdfBytes) throw new Error("No PDF loaded.");
@@ -790,13 +839,29 @@ export default function ToolWorkspace({
       throw new Error("This PDF is not password-protected — no unlock needed.");
     }
 
-    let decryptedBytes: Uint8Array;
-    try {
-      decryptedBytes = await decryptPDF(f.pdfBytes, capturedPw);
-      console.log("[Unlock] Decryption successful, size:", decryptedBytes.length);
-    } catch {
-      throw new Error("Wrong password. Please check and try again.");
+    // Build multipart form data
+    const formData = new FormData();
+    const pdfBlob = new Blob([f.pdfBytes], { type: "application/pdf" });
+    formData.append("file", pdfBlob, f.name);
+    formData.append("password", capturedPw);
+
+    const response = await fetch("/api/unlock-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let errMsg = "Failed to unlock the PDF. The password may be incorrect.";
+      try {
+        const errBody = await response.json();
+        errMsg = errBody.error || errMsg;
+      } catch { /* ignore */ }
+      throw new Error(errMsg);
     }
+
+    const decryptedArrayBuffer = await response.arrayBuffer();
+    const decryptedBytes = new Uint8Array(decryptedArrayBuffer);
+    const finalBlob = new Blob([decryptedBytes], { type: "application/pdf" });
 
     // Get page count
     let pageCount = 0;
@@ -805,7 +870,6 @@ export default function ToolWorkspace({
       pageCount = doc.getPageCount();
     } catch { pageCount = 1; }
 
-    const finalBlob = new Blob([decryptedBytes], { type: "application/pdf" });
     setOriginalSize(f.size);
     setNewSize(decryptedBytes.length);
     setPageCountOutput(pageCount);
@@ -1393,37 +1457,91 @@ export default function ToolWorkspace({
                       </div>
                     )}
 
-                    {/* PROTECT PDF KEYWORDS ENTRY */}
+                    {/* PROTECT PDF — Password & Confirm Password (Lovable Design) */}
                     {tool.slug === "protect-pdf" && (
-                      <div>
-                        <label className="block text-xs font-semibold text-neutral-800 tracking-wide uppercase mb-2">Configure File Passkey Encryption</label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <span className="text-xs text-neutral-500 block mb-1">Target protect file:</span>
-                            <div className="flex items-center gap-2 py-1">
-                              <FileText size={16} className="text-neutral-600" />
-                              <span className="text-xs font-semibold text-neutral-800 truncate max-w-xs">{files[0].name}</span>
-                            </div>
-                            <p className="text-[10px] text-neutral-400 mt-1">This uses localized stream encryption to scramble elements securely.</p>
+                      <div className="space-y-4">
+                        {/* File pill */}
+                        <div className="flex items-center gap-3 bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3">
+                          <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                            <FileText size={18} className="text-blue-600" />
                           </div>
-                          <div>
-                            <label className="block text-xs text-neutral-500 mb-1 font-medium font-sans">Enter standard password string:</label>
-                            <div className="relative">
-                              <input 
-                                type="password" 
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Enter secure lock key..."
-                                className="w-full text-xs bg-white border border-neutral-200 rounded-lg pl-9 pr-3 py-2 focus:outline-none focus:border-neutral-900 font-mono"
-                                id="password_input_protect"
-                              />
-                              <Lock size={14} className="absolute left-3 top-2.5 text-neutral-400" />
-                            </div>
-                            <p className="text-[9px] text-amber-600 mt-1.5 flex items-center gap-1 font-sans">
-                              <AlertTriangle size={11} /> Keep a note of it. Passwords cannot be retrieved due to high-security offline design.
-                            </p>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-neutral-900 truncate">{files[0].name}</p>
+                            <p className="text-[11px] text-neutral-400">{(files[0].size / 1024).toFixed(0)} KB · PDF</p>
+                          </div>
+                          <button
+                            onClick={resetStates}
+                            className="text-xs text-neutral-500 hover:text-neutral-800 flex items-center gap-1 transition-colors"
+                          >
+                            <X size={13} /> Change
+                          </button>
+                        </div>
+
+                        {/* Password field */}
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700 mb-1.5" htmlFor="password_input_protect">Password</label>
+                          <div className="relative">
+                            <input
+                              id="password_input_protect"
+                              type={showPassword ? "text" : "password"}
+                              value={password}
+                              onChange={(e) => { setPassword(e.target.value); passwordRef.current = e.target.value; }}
+                              placeholder="••••••••"
+                              className="w-full text-sm bg-white border border-neutral-200 rounded-xl px-4 py-3 pr-11 focus:outline-none focus:border-neutral-800 focus:ring-2 focus:ring-neutral-100 transition-all placeholder:text-neutral-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(v => !v)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 transition-colors"
+                              tabIndex={-1}
+                              aria-label={showPassword ? "Hide password" : "Show password"}
+                            >
+                              {showPassword ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                              )}
+                            </button>
                           </div>
                         </div>
+
+                        {/* Confirm Password field */}
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700 mb-1.5" htmlFor="confirm_password_input_protect">Confirm password</label>
+                          <div className="relative">
+                            <input
+                              id="confirm_password_input_protect"
+                              type={showConfirmPassword ? "text" : "password"}
+                              value={confirmPassword}
+                              onChange={(e) => { setConfirmPassword(e.target.value); confirmPasswordRef.current = e.target.value; }}
+                              placeholder="••••••••"
+                              className={`w-full text-sm bg-white border rounded-xl px-4 py-3 pr-11 focus:outline-none focus:ring-2 transition-all placeholder:text-neutral-300 ${
+                                confirmPassword.length > 0 && confirmPassword !== password
+                                  ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+                                  : "border-neutral-200 focus:border-neutral-800 focus:ring-neutral-100"
+                              }`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPassword(v => !v)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 transition-colors"
+                              tabIndex={-1}
+                              aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                            >
+                              {showConfirmPassword ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                              ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                              )}
+                            </button>
+                          </div>
+                          {confirmPassword.length > 0 && confirmPassword !== password && (
+                            <p className="text-xs text-red-500 mt-1">Passwords do not match.</p>
+                          )}
+                        </div>
+
+                        {/* Helper text */}
+                        <p className="text-xs text-neutral-500">Use at least 8 characters. We never see your password.</p>
                       </div>
                     )}
 
@@ -1464,6 +1582,23 @@ export default function ToolWorkspace({
                   </div>
 
                   {/* EXECUTE COMPILATION BLOCK */}
+                  {tool.slug === "protect-pdf" ? (
+                    /* ── Lovable-style full-width Protect PDF CTA ── */
+                    <div className="border-t border-neutral-100 pt-5">
+                      <button
+                        onClick={executePDFAction}
+                        disabled={!password || password.length < 8 || confirmPassword !== password}
+                        id="compile_pdf_btn_id"
+                        className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold text-sm transition-all
+                          bg-neutral-900 text-white hover:bg-neutral-800 shadow-sm
+                          disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none
+                          focus:outline-none focus:ring-2 focus:ring-neutral-800 focus:ring-offset-1"
+                      >
+                        <Shield size={16} />
+                        Protect PDF
+                      </button>
+                    </div>
+                  ) : (
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-neutral-100 pt-5">
                     {tool.slug === "merge-pdf" ? (
                       <span className="text-xs text-neutral-500 font-mono">
@@ -1491,15 +1626,15 @@ export default function ToolWorkspace({
                         className="text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-900 rounded-lg px-6 py-2 shadow-xs hover:shadow-sm tracking-wide shrink-0 font-mono flex-1 sm:flex-none text-center flex items-center justify-center gap-1.5 cursor-pointer"
                         id="compile_pdf_btn_id"
                       >
-                        {tool.slug === "protect-pdf"
-                          ? "Create Protected Copy"
-                          : tool.slug === "unlock-pdf"
-                            ? "Create Unlocked Copy"
-                            : "Compile & Export"}{" "}
+                        {tool.slug === "unlock-pdf"
+                          ? "Create Unlocked Copy"
+                          : "Compile & Export"}{" "}
                         <ArrowRight size={14} />
                       </button>
                     </div>
                   </div>
+                  )}
+
 
                     </div>
                   )}

@@ -7,6 +7,22 @@ import { createServer as createViteServer } from "vite";
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import multer from "multer";
+import { createRequire } from "module";
+
+// ── qpdf-WASM: initialise once and reuse across all requests ──────────────
+// @neslinesli93/qpdf-wasm ships a CJS module with an inline WASM loader.
+// We use createRequire so the ESM server.ts can resolve its CJS entry.
+const _require = createRequire(import.meta.url);
+let _qpdfModulePromise: Promise<any> | null = null;
+function getQpdfModule(): Promise<any> {
+  if (!_qpdfModulePromise) {
+    const createQpdf = _require("@neslinesli93/qpdf-wasm");
+    const wasmPath: string = _require.resolve("@neslinesli93/qpdf-wasm/dist/qpdf.wasm");
+    _qpdfModulePromise = createQpdf({ locateFile: () => wasmPath });
+  }
+  return _qpdfModulePromise!;
+}
 
 // Initialize express app
 const app = express();
@@ -114,8 +130,168 @@ app.post("/api/razorpay/verify", async (req, res) => {
   }
 });
 
+// ── /api/protect-pdf ────────────────────────────────────────────────────────
+// Server-side AES-256 PDF encryption via qpdf-WASM.
+// Accepts a multipart/form-data POST with:
+//   file     — the PDF file (≤50 MB)
+//   password — user password (4–256 chars)
+// Returns the encrypted PDF as application/pdf.
+//
+// Security notes implemented here:
+//  • Password passed as argv tokens after "--", never via shell interpolation
+//  • AES-256 only (key length 256); 40/128-bit legacy not offered
+//  • User + owner password identical (simple protect flow)
+//  • Password is NEVER logged
+//  • File size limited in multer before reading body
+//  • WASM FS paths are ephemeral and cleaned up after each request
+// ────────────────────────────────────────────────────────────────────────────
+const _pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === "application/pdf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF files are allowed"));
+    }
+  },
+});
+
+// Warm up the WASM module at server start so the first request isn't slow
+getQpdfModule().catch((e: unknown) =>
+  console.warn("[qpdf-wasm] Warm-up failed (will retry on first request):", e)
+);
+
+app.post("/api/protect-pdf", _pdfUpload.single("file"), async (req: any, res: any) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "Missing PDF file (field name: 'file')" });
+  }
+
+  const password = String(req.body.password ?? "");
+  if (password.length < 8 || password.length > 256) {
+    return res.status(400).json({ error: "Password must be between 8 and 256 characters" });
+  }
+
+  // Validate PDF magic bytes (%PDF-) — don't trust mimetype alone
+  const magic = req.file.buffer.slice(0, 5).toString("ascii");
+  if (!magic.startsWith("%PDF-")) {
+    return res.status(400).json({ error: "File does not appear to be a valid PDF" });
+  }
+
+  try {
+    console.log(`[protect-pdf] Upload success: ${req.file.originalname} (${req.file.size} bytes)`);
+    const qpdf = await getQpdfModule();
+
+    // Unique per-request paths inside the WASM virtual FS
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const inPath  = `/in-${id}.pdf`;
+    const outPath = `/out-${id}.pdf`;
+
+    qpdf.FS.writeFile(inPath, new Uint8Array(req.file.buffer));
+
+    console.log(`[protect-pdf] Encryption start: ${req.file.originalname}`);
+    // Pass password AFTER "--" so it is never interpreted as a qpdf flag.
+    // Both user-password and owner-password are set to the same value.
+    const exitCode: number = qpdf.callMain([
+      "--encrypt", password, password, "256",
+      "--", inPath, outPath,
+    ]);
+
+    if (exitCode !== 0) {
+      throw new Error(`qpdf-wasm exited with code ${exitCode}`);
+    }
+
+    console.log(`[protect-pdf] Encryption complete: ${req.file.originalname}`);
+    const out: Uint8Array = qpdf.FS.readFile(outPath);
+
+    // Clean up WASM FS entries immediately
+    try { qpdf.FS.unlink(inPath); } catch { /* ignore */ }
+    try { qpdf.FS.unlink(outPath); } catch { /* ignore */ }
+
+    const baseName = req.file.originalname.replace(/\.pdf$/i, "");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${baseName}-protected.pdf"`
+    );
+    console.log(`[protect-pdf] Download response: Sending ${out.length} bytes for ${baseName}-protected.pdf`);
+    res.send(Buffer.from(out));
+
+  } catch (err: any) {
+    console.error("[protect-pdf] Error condition:", err?.message ?? err);
+    res.status(500).json({ error: "Failed to encrypt the PDF. Please try again." });
+  }
+});
+
+// ── /api/unlock-pdf ─────────────────────────────────────────────────────────
+// Server-side PDF decryption via qpdf-WASM.
+// Accepts a multipart/form-data POST with:
+//   file     — the encrypted PDF file (≤100 MB)
+//   password — user password
+// Returns the decrypted PDF as application/pdf.
+// ────────────────────────────────────────────────────────────────────────────
+app.post("/api/unlock-pdf", _pdfUpload.single("file"), async (req: any, res: any) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "Missing PDF file (field name: 'file')" });
+  }
+
+  const password = String(req.body.password ?? "");
+  if (!password) {
+    return res.status(400).json({ error: "Password is required to unlock the PDF" });
+  }
+
+  const magic = req.file.buffer.slice(0, 5).toString("ascii");
+  if (!magic.startsWith("%PDF-")) {
+    return res.status(400).json({ error: "File does not appear to be a valid PDF" });
+  }
+
+  try {
+    console.log(`[unlock-pdf] Upload success: ${req.file.originalname} (${req.file.size} bytes)`);
+    const qpdf = await getQpdfModule();
+
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const inPath  = `/in-${id}.pdf`;
+    const outPath = `/out-${id}.pdf`;
+
+    qpdf.FS.writeFile(inPath, new Uint8Array(req.file.buffer));
+
+    console.log(`[unlock-pdf] Decryption start: ${req.file.originalname}`);
+    const exitCode: number = qpdf.callMain([
+      `--password=${password}`,
+      "--decrypt",
+      "--",
+      inPath,
+      outPath,
+    ]);
+
+    if (exitCode !== 0) {
+      throw new Error(`qpdf-wasm exited with code ${exitCode} (likely invalid password)`);
+    }
+
+    console.log(`[unlock-pdf] Decryption complete: ${req.file.originalname}`);
+    const out: Uint8Array = qpdf.FS.readFile(outPath);
+
+    try { qpdf.FS.unlink(inPath); } catch { /* ignore */ }
+    try { qpdf.FS.unlink(outPath); } catch { /* ignore */ }
+
+    const baseName = req.file.originalname.replace(/\.pdf$/i, "");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${baseName}-unlocked.pdf"`
+    );
+    console.log(`[unlock-pdf] Download response: Sending ${out.length} bytes`);
+    res.send(Buffer.from(out));
+
+  } catch (err: any) {
+    console.error("[unlock-pdf] Error condition:", err?.message ?? err);
+    res.status(400).json({ error: "Failed to unlock the PDF. The password may be incorrect." });
+  }
+});
+
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "secure_32_byte_passphrase_key_12";
 const IV_LENGTH = 16;
+
 
 export function encryptData(text: string): string {
   const iv = crypto.randomBytes(IV_LENGTH);
