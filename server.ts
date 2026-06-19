@@ -626,3 +626,11 @@ async function setupServer() {
 }
 
 setupServer();
+
+// ── Global crash guards ──────────────────────────────────────────────────────
+process.on("uncaughtException", (err) => {
+  console.error("[Server] Uncaught exception (server stays up):", err.message);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[Server] Unhandled rejection (server stays up):", reason);
+});
