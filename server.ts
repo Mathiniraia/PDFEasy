@@ -432,10 +432,22 @@ const USAGE_FILE = path.join(process.cwd(), "ip_usage.json");
 // Emails in this list get PERMANENT LIFETIME access — no payment, no limit.
 // Add your email here. You can also add partner / team emails.
 const ADMIN_WHITELIST: string[] = [
-  "mathinirai.a@gmail.com",   // Owner — permanent admin
+  "mathinirai.a@gmail.com",   // Owner — permanent admin, unlimited access forever
   // Add more admin emails below:
   // "partner@example.com",
 ];
+
+// Pre-grant permanent access to all admin emails on startup
+function ensureAdminAccess() {
+  for (const email of ADMIN_WHITELIST) {
+    const key = `email:${email.toLowerCase()}`;
+    ipUsageStore[key] = {
+      count: 0,
+      unlockedUntil: Infinity,
+      planName: "Admin (Lifetime)"
+    };
+  }
+}
 
 // Admin secret key — must match ADMIN_SECRET in your .env
 function isAdminRequest(req: express.Request): boolean {
@@ -469,8 +481,13 @@ if (fs.existsSync(USAGE_FILE)) {
   }
 }
 
+// Always ensure admin emails have permanent access, even after server restart
+ensureAdminAccess();
+console.log("[Admin] Permanent access granted to:", ADMIN_WHITELIST.join(", "));
+
 /** Returns true if the entry currently has an active (not expired) premium plan */
 function isPremiumActive(entry: { unlockedUntil: number }): boolean {
+  if (entry.unlockedUntil === Infinity) return true;  // permanent / admin grant
   return entry.unlockedUntil > Date.now();
 }
 
