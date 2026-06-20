@@ -2,18 +2,22 @@
  * AdminPage.tsx — Built-in CRM Admin Dashboard for PDFEasy
  * Route: /admin
  * Access: only mathinirai.a@gmail.com
+ * Self-contained auth: handles its own Google sign-in / password fallback
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { signInWithPopup, signOut } from "firebase/auth";
+import { auth, googleProvider } from "../../firebase";
 import {
   Users, CreditCard, BarChart3, RefreshCw, Shield,
   Mail, Clock, Crown, Ban, Zap, AlertTriangle,
   Search, CheckCircle, XCircle, IndianRupee, Activity,
-  LogOut, ChevronDown, TrendingUp, Calendar
+  ChevronDown, TrendingUp, Calendar, Eye, EyeOff, Lock
 } from "lucide-react";
 
-const ADMIN_EMAIL    = "mathinirai.a@gmail.com";
-const ADMIN_SECRET   = "pdfeasy-admin-secret-2024";
+const ADMIN_EMAIL  = "mathinirai.a@gmail.com";
+const ADMIN_SECRET = "pdfeasy-admin-secret-2024";
+const ADMIN_PASS   = "pdfeasy-admin-2024"; // local dev bypass
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -207,19 +211,136 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
     setShowManual(false);
   };
 
-  // ── Access guard ─────────────────────────────────────────────────────────────
-  if (!isAdmin) {
+  // ── Self-contained auth gate ─────────────────────────────────────────────
+  // Read cached email from localStorage first (set by main app on Google login)
+  const [authedEmail, setAuthedEmail] = useState<string | null>(() => {
+    const cached = localStorage.getItem("user_email") || localStorage.getItem("admin_authed_email");
+    if (cached?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return cached;
+    // Also use passed prop
+    if (currentUserEmail?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return currentUserEmail;
+    return null;
+  });
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError]     = useState("");
+  const [showPassForm, setShowPassForm] = useState(false);
+  const [password, setPassword]         = useState("");
+  const [showPw, setShowPw]             = useState(false);
+
+  // Google Sign-In directly on this page
+  const handleGoogleSignIn = async () => {
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const email = result.user.email || "";
+      if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+        await signOut(auth);
+        setLoginError(`Access denied. Only ${ADMIN_EMAIL} can access this panel.`);
+        return;
+      }
+      localStorage.setItem("admin_authed_email", email);
+      setAuthedEmail(email);
+    } catch (err: any) {
+      if (err.code === "auth/unauthorized-domain") {
+        setShowPassForm(true);
+        setLoginError("Firebase not configured for localhost. Use password login below.");
+      } else if (err.code !== "auth/popup-closed-by-user") {
+        setLoginError(err.message || "Sign-in failed.");
+      }
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // Password fallback (local dev)
+  const handlePasswordLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === ADMIN_PASS) {
+      localStorage.setItem("admin_authed_email", ADMIN_EMAIL);
+      setAuthedEmail(ADMIN_EMAIL);
+      setLoginError("");
+    } else {
+      setLoginError("Wrong password.");
+    }
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem("admin_authed_email");
+    setAuthedEmail(null);
+    try { signOut(auth); } catch (_) {}
+  };
+
+  // Show login gate if not authenticated as admin
+  if (!authedEmail) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-center mx-auto">
-            <Shield className="w-8 h-8 text-red-500" />
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 text-center">
+
+          {/* Logo */}
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 bg-neutral-950 rounded-2xl flex items-center justify-center shadow-lg">
+              <Shield size={28} className="text-emerald-400" />
+            </div>
           </div>
-          <h1 className="text-xl font-black text-neutral-900">Access Denied</h1>
-          <p className="text-sm text-neutral-500">Only the admin can access this page.</p>
-          <button onClick={onBack} className="text-sm font-bold text-neutral-600 hover:text-neutral-900 underline cursor-pointer">
-            ← Go back
-          </button>
+          <h1 className="text-xl font-black text-neutral-900 mb-1">Admin Panel</h1>
+          <p className="text-xs text-neutral-400 mb-6">PDFEasy · Restricted Access</p>
+
+          {/* Error */}
+          {loginError && (
+            <div className="mb-4 flex items-start gap-2 bg-red-50 text-red-700 text-xs font-medium px-3 py-2.5 rounded-xl border border-red-200 text-left">
+              <XCircle size={13} className="shrink-0 mt-0.5" />
+              {loginError}
+            </div>
+          )}
+
+          {!showPassForm ? (
+            <>
+              {/* Google Sign-In */}
+              <button onClick={handleGoogleSignIn} disabled={loginLoading}
+                className="w-full flex items-center justify-center gap-3 bg-white border-2 border-neutral-200 hover:border-neutral-400 text-neutral-800 font-bold py-3 px-4 rounded-xl transition-all cursor-pointer disabled:opacity-50 shadow-sm hover:shadow-md">
+                {loginLoading ? (
+                  <RefreshCw size={16} className="animate-spin text-neutral-400" />
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                )}
+                {loginLoading ? "Signing in..." : "Sign in with Google"}
+              </button>
+              <button onClick={() => { setShowPassForm(true); setLoginError(""); }}
+                className="mt-3 w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-neutral-400 hover:text-neutral-700 transition cursor-pointer">
+                <Lock size={10} /> Use password instead
+              </button>
+            </>
+          ) : (
+            <form onSubmit={handlePasswordLogin} className="space-y-3 text-left">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-[11px] text-amber-700 font-semibold">
+                🔧 Local dev mode — password login
+              </div>
+              <div className="relative">
+                <input type={showPw ? "text" : "password"} value={password}
+                  onChange={e => setPassword(e.target.value)} placeholder="Admin password"
+                  autoFocus className="w-full px-4 pr-10 py-3 text-sm font-medium border-2 border-neutral-200 rounded-xl focus:outline-none focus:border-neutral-900 transition" />
+                <button type="button" onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 cursor-pointer">
+                  {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+              <button type="submit"
+                className="w-full bg-neutral-900 hover:bg-neutral-700 text-white font-bold py-3 rounded-xl transition cursor-pointer">
+                Access Admin Panel
+              </button>
+              <button type="button" onClick={() => { setShowPassForm(false); setLoginError(""); setPassword(""); }}
+                className="w-full text-[11px] text-neutral-400 hover:text-neutral-700 transition cursor-pointer text-center">
+                ← Back to Google Sign-In
+              </button>
+            </form>
+          )}
+
+          <p className="text-[10px] text-neutral-300 mt-6">🔒 Only mathinirai.a@gmail.com can access</p>
         </div>
       </div>
     );
@@ -265,12 +386,17 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono text-neutral-400 hidden sm:block">{authedEmail}</span>
             <button onClick={fetchData} className="p-1.5 text-neutral-400 hover:text-neutral-700 transition cursor-pointer rounded-lg hover:bg-neutral-100">
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             </button>
             <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
               🔒 Admin
             </span>
+            <button onClick={handleSignOut}
+              className="text-[10px] font-bold text-neutral-400 hover:text-red-600 transition cursor-pointer px-2 py-1 rounded-lg hover:bg-red-50">
+              Sign out
+            </button>
           </div>
         </div>
       </div>
