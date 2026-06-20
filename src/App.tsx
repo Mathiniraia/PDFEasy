@@ -11,10 +11,12 @@ import {
   ShieldCheck, Heart, ExternalLink, ArrowRight, FileText, 
   Compass, ArrowLeft, RefreshCw, Lock, PenTool, FileSignature
 } from "lucide-react";
+
 import { TOOLS } from "./toolsData";
 import { ToolDefinition } from "./types";
 import ToolWorkspace from "./components/tools/ToolWorkspace";
 import PaywallModal from "./components/payment/PaywallModal";
+import AdminDashboard, { isAdminEmail } from "./components/admin/AdminDashboard";
 import { signInWithPopup, signInWithRedirect, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 import { auth, googleProvider } from "./firebase";
 import { logUserActivity } from "./lib/logUserActivity";
@@ -32,6 +34,9 @@ export default function App() {
 
   // FAQ Accordion states
   const [activeFaqIndices, setActiveFaqIndices] = useState<number[]>([]);
+
+  // Admin Dashboard
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Auth States
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(() => {
@@ -612,6 +617,16 @@ export default function App() {
                 >
                   Sign Out
                 </button>
+                {/* Admin button — only for admin emails */}
+                {isAdminEmail(currentUserEmail) && (
+                  <button
+                    onClick={() => setShowAdminDashboard(true)}
+                    className="flex items-center gap-1.5 text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg transition cursor-pointer"
+                    title="Open Admin Dashboard"
+                  >
+                    <Shield size={11} /> Admin
+                  </button>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-4">
@@ -645,6 +660,14 @@ export default function App() {
               <RefreshCw size={11} />
             </button>
           </div>
+
+          {/* Admin Dashboard Modal */}
+          {showAdminDashboard && isAdminEmail(currentUserEmail) && (
+            <AdminDashboard
+              currentUserEmail={currentUserEmail}
+              onClose={() => setShowAdminDashboard(false)}
+            />
+          )}
 
           {/* Premium Google-Style Full Screen Modal Overlay for Sign In & Sign Up */}
           {showAuthModal && (
