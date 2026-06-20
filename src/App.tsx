@@ -15,7 +15,7 @@ import { TOOLS } from "./toolsData";
 import { ToolDefinition } from "./types";
 import ToolWorkspace from "./components/tools/ToolWorkspace";
 import PaywallModal from "./components/payment/PaywallModal";
-import { signInWithPopup, signInWithRedirect, onAuthStateChanged } from "firebase/auth";
+import { signInWithPopup, signInWithRedirect, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 import { auth, googleProvider } from "./firebase";
 import { logUserActivity } from "./lib/logUserActivity";
 
@@ -46,6 +46,8 @@ export default function App() {
   const [authOtpInput, setAuthOtpInput] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [otpConfirmationResult, setOtpConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [otpLoading, setOtpLoading] = useState(false);
 
   const resetAuthForm = () => {
     setAuthEmailInput("");
@@ -55,6 +57,88 @@ export default function App() {
     setAuthOtpInput("");
     setOtpSent(false);
     setAuthError("");
+    setOtpConfirmationResult(null);
+    // Clear recaptcha on reset
+    if ((window as any).appRecaptchaVerifier) {
+      try { (window as any).appRecaptchaVerifier.clear(); } catch {}
+      (window as any).appRecaptchaVerifier = null;
+    }
+  };
+
+  const initAppRecaptcha = () => {
+    if (!(window as any).appRecaptchaVerifier) {
+      try {
+        (window as any).appRecaptchaVerifier = new RecaptchaVerifier(auth, "app-recaptcha-container", {
+          size: "invisible",
+          callback: () => {},
+          "expired-callback": () => {
+            if ((window as any).appRecaptchaVerifier) {
+              try { (window as any).appRecaptchaVerifier.clear(); } catch {}
+              (window as any).appRecaptchaVerifier = null;
+            }
+          }
+        });
+      } catch (err) {
+        console.error("reCAPTCHA init failed:", err);
+      }
+    }
+  };
+
+  const handleSendPhoneOtp = async () => {
+    setAuthError("");
+    const phone = authPhoneInput.trim();
+    if (!phone.startsWith("+") || phone.length < 10) {
+      setAuthError("Enter phone number with country code, e.g. +919876543210");
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      initAppRecaptcha();
+      const appVerifier = (window as any).appRecaptchaVerifier;
+      if (!appVerifier) throw new Error("reCAPTCHA could not be initialized.");
+      const confirmation = await signInWithPhoneNumber(auth, phone, appVerifier);
+      setOtpConfirmationResult(confirmation);
+      setOtpSent(true);
+    } catch (err: any) {
+      console.error("Send OTP error:", err);
+      setAuthError(err.message || "Failed to send OTP. Please try again.");
+      if ((window as any).appRecaptchaVerifier) {
+        try { (window as any).appRecaptchaVerifier.clear(); } catch {}
+        (window as any).appRecaptchaVerifier = null;
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    setAuthError("");
+    if (!otpConfirmationResult) {
+      setAuthError("Session expired. Please send OTP again.");
+      setOtpSent(false);
+      return;
+    }
+    if (!authOtpInput || authOtpInput.length !== 6) {
+      setAuthError("Please enter the 6-digit OTP code.");
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      const result = await otpConfirmationResult.confirm(authOtpInput);
+      const user = result.user;
+      const phoneId = user.phoneNumber || authPhoneInput;
+      const mockEmail = `${phoneId}@phone.otp`;
+      localStorage.setItem("user_email", mockEmail);
+      setCurrentUserEmail(mockEmail);
+      setShowAuthModal(false);
+      resetAuthForm();
+      syncUserSession("Phone User", phoneId, premiumUnlocked ? "pro" : "free");
+    } catch (err: any) {
+      console.error("Verify OTP error:", err);
+      setAuthError("Invalid OTP code. Please check and try again.");
+    } finally {
+      setOtpLoading(false);
+    }
   };
 
   const syncUserSession = async (
@@ -82,9 +166,10 @@ export default function App() {
     }
   };
 
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
+
 
     if (authMode === "signup") {
       if (!authEmailInput.includes("@")) {
@@ -115,23 +200,11 @@ export default function App() {
       resetAuthForm();
       syncUserSession(authEmailInput.split("@")[0], authEmailInput, premiumUnlocked ? "pro" : "free");
     } else if (authMode === "phone") {
+      // Phone OTP handled separately via handleSendPhoneOtp / handleVerifyPhoneOtp
       if (!otpSent) {
-        if (!authPhoneInput || authPhoneInput.length < 10) {
-          setAuthError("Please enter a valid phone number.");
-          return;
-        }
-        setOtpSent(true);
+        await handleSendPhoneOtp();
       } else {
-        if (!authOtpInput || authOtpInput.length !== 6) {
-          setAuthError("Please enter the 6-digit OTP code.");
-          return;
-        }
-        const mockPhoneEmail = `${authPhoneInput}@phone.otp`;
-        localStorage.setItem("user_email", mockPhoneEmail);
-        setCurrentUserEmail(mockPhoneEmail);
-        setShowAuthModal(false);
-        resetAuthForm();
-        syncUserSession("Phone User", authPhoneInput, premiumUnlocked ? "pro" : "free");
+        await handleVerifyPhoneOtp();
       }
     }
   };
@@ -830,20 +903,36 @@ export default function App() {
                               required
                             />
                             <p className="text-[10px] text-neutral-400 mt-1.5 text-center">
-                              Enter any 6-digit code for mock verification.
+                              Check your SMS for the 6-digit code.
                             </p>
                           </div>
                         )}
                       </>
                     )}
 
+                    {/* Invisible reCAPTCHA container for Firebase Phone Auth */}
+                    <div id="app-recaptcha-container"></div>
+
                     <button
                       type="submit"
-                      className="w-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium py-3 rounded-xl text-sm transition shadow-sm cursor-pointer mt-4"
+                      disabled={otpLoading}
+                      className="w-full bg-neutral-900 hover:bg-neutral-800 disabled:bg-neutral-400 text-white font-medium py-3 rounded-xl text-sm transition shadow-sm cursor-pointer mt-4 flex items-center justify-center gap-2"
                     >
-                      {authMode === "signup" && "Sign Up with Gmail"}
-                      {authMode === "signin" && "Sign In with Gmail"}
-                      {authMode === "phone" && (!otpSent ? "Send OTP Code" : "Verify & Login")}
+                      {otpLoading ? (
+                        <>
+                          <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                          {!otpSent ? "Sending OTP…" : "Verifying…"}
+                        </>
+                      ) : (
+                        <>
+                          {authMode === "signup" && "Sign Up with Gmail"}
+                          {authMode === "signin" && "Sign In with Gmail"}
+                          {authMode === "phone" && (!otpSent ? "Send OTP Code" : "Verify & Login")}
+                        </>
+                      )}
                     </button>
                   </form>
                 </div>
