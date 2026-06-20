@@ -17,6 +17,7 @@ import { ToolDefinition } from "./types";
 import ToolWorkspace from "./components/tools/ToolWorkspace";
 import PaywallModal from "./components/payment/PaywallModal";
 import AdminDashboard, { isAdminEmail } from "./components/admin/AdminDashboard";
+import AdminPage from "./components/admin/AdminPage";
 import { signInWithPopup, signInWithRedirect, onAuthStateChanged, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 import { auth, googleProvider } from "./firebase";
 import { logUserActivity } from "./lib/logUserActivity";
@@ -24,6 +25,7 @@ import { logUserActivity } from "./lib/logUserActivity";
 export default function App() {
   // Custom router state
   const [currentSlug, setCurrentSlug] = useState<string>("");
+  const [showAdminPage, setShowAdminPage] = useState(false);
   
   // Paywall states
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
@@ -288,6 +290,13 @@ export default function App() {
     const handleLocationChange = () => {
       const path = window.location.pathname.replace(/^\//, "");
       // If valid slug fits, set it, else empty (home screen)
+      // /admin route
+      if (path === "admin") {
+        setShowAdminPage(true);
+        setCurrentSlug("");
+        return;
+      }
+      setShowAdminPage(false);
       if (path === "premium") {
         setCurrentSlug("");
         window.history.replaceState(null, "", "/");
@@ -547,6 +556,19 @@ export default function App() {
       prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
     );
   };
+
+  // ── /admin route: render admin dashboard full-screen ──────────────────────
+  if (showAdminPage) {
+    return (
+      <AdminPage
+        currentUserEmail={currentUserEmail}
+        onBack={() => {
+          window.history.pushState(null, "", "/");
+          setShowAdminPage(false);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 font-sans flex flex-col justify-between selection:bg-neutral-900 selection:text-white" id="main_app_canvas">

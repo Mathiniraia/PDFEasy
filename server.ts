@@ -914,13 +914,66 @@ app.get("/api/admin/crm-users", async (req, res) => {
         planStatus: livePlan,
         usageCount: liveCount,
         premiumActive: isPremium,
-        expiresAt: expiresAt > 0 ? new Date(expiresAt).toISOString() : null,
+        expiresAt: expiresAt > 0 ? new Date(expiresAt).toISOString() : (u.plan_expires_at || null),
         joinedAt: u.created_at,
         isAdmin: email ? isAdminEmail(email) : false,
+        grantedByAdmin: u.granted_by_admin || false,
+        accessRevoked:  u.access_revoked  || false,
       };
     });
 
     res.json({ users, total: users.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/transactions — fetch all payment records from Supabase
+app.get("/api/admin/transactions", async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(403).json({ error: "Unauthorized." });
+  try {
+    const { data, error } = await supabase
+      .from("crm_transactions")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const transactions = (data || []).map((tx: any) => ({
+      id:                tx.id,
+      razorpayPaymentId: tx.razorpay_payment_id || "—",
+      userName:          tx.user_name || "Unknown",
+      passType:          tx.plan_type || "Unknown Plan",
+      amount:            tx.amount || 0,
+      timestamp:         tx.created_at,
+      status:            tx.status || "captured",
+      planExpiresAt:     tx.plan_expires_at || null,
+    }));
+
+    res.json({ transactions, total: transactions.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/tool-analytics — fetch tool usage counts from Supabase
+app.get("/api/admin/tool-analytics", async (req, res) => {
+  if (!isAdminRequest(req)) return res.status(403).json({ error: "Unauthorized." });
+  try {
+    const { data, error } = await supabase
+      .from("crm_tool_analytics")
+      .select("*")
+      .order("count", { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const tools = (data || []).map((t: any) => ({
+      slug:  t.tool_slug,
+      title: t.tool_name || t.tool_slug,
+      count: t.count || 0,
+    }));
+
+    res.json({ tools, total: tools.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
