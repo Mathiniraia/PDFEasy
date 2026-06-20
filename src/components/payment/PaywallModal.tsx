@@ -25,44 +25,47 @@ interface PaywallModalProps {
 
 const PLANS: PaymentPlan[] = [
   {
-    id: "daily",
-    name: "Daily Pass",
-    price: 29,
-    originalPrice: 116,
-    period: "24-Hour Access",
-    description: "Unlimited access to all PDF tools for 24 hours.",
+    id: "starter",
+    name: "Starter",
+    price: 99,
+    originalPrice: 199,
+    period: "7-Day Access",
+    discount: "50% OFF",
+    description: "7 days of full access to all PDF tools.",
     benefits: [
-      "All 12 PDF tools — no limits",
-      "Files up to 100MB per document",
+      "All PDF tools — no limits",
+      "Files up to 100MB",
       "Instant secure download",
       "High-speed processing",
     ]
   },
   {
-    id: "weekly",
-    name: "Weekly Pass",
-    price: 99,
-    originalPrice: 399,
-    period: "7-Day Access",
+    id: "monthly",
+    name: "Monthly",
+    price: 199,
+    originalPrice: 569,
+    period: "1-Month Access",
     popular: true,
-    description: "Full access for 7 days — ideal for project workflows.",
+    discount: "65% OFF",
+    description: "30 days of complete toolkit access — best for regular use.",
     benefits: [
-      "Everything in Daily Pass",
-      "7 continuous days of access",
+      "Everything in Starter",
+      "30 continuous days of access",
       "Priority cloud processing",
       "Mobile + desktop ready",
     ]
   },
   {
-    id: "monthly",
-    name: "Monthly Pro",
-    price: 299,
-    originalPrice: 1199,
-    period: "30-Day Access",
-    description: "Best value — 30 days of complete toolkit access.",
+    id: "annual",
+    name: "Annual",
+    price: 999,
+    originalPrice: 4999,
+    period: "1-Year Access",
+    discount: "80% OFF",
+    description: "Best value — full year of unrestricted PDF toolkit access.",
     benefits: [
-      "Everything in Weekly Pass",
-      "30 days unrestricted access",
+      "Everything in Monthly",
+      "365 days unrestricted access",
       "Batch processing support",
       "Premium priority support",
     ]
@@ -380,10 +383,10 @@ export default function PaywallModal({
     }, 1500);
   };
 
-  // ─── PLAN ICON ───────────────────────────────────────────────────────────
+  // ─── PLAN ICON ────────────────────────────────────────────────
   const PlanIcon = ({ id }: { id: string }) => {
-    if (id === "daily")   return <Zap size={16} className="text-amber-500" />;
-    if (id === "weekly")  return <Calendar size={16} className="text-blue-500" />;
+    if (id === "starter") return <Zap size={16} className="text-amber-500" />;
+    if (id === "monthly") return <Calendar size={16} className="text-blue-500" />;
     return <Clock size={16} className="text-emerald-500" />;
   };
 
@@ -868,36 +871,54 @@ export default function PaywallModal({
                     onClick={() => { setSelectedPlan(plan); setShowSandboxUI(false); }}
                     className={`w-full p-4 rounded-xl text-left flex items-center justify-between transition-all duration-150 border-2 ${
                       isSelected
-                        ? "bg-white border-neutral-900 shadow-md ring-1 ring-neutral-900"
-                        : "bg-white/50 border-neutral-200 hover:border-neutral-300 hover:bg-white"
+                        ? "bg-neutral-950 border-neutral-900 shadow-lg"
+                        : "bg-white border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50"
                     } cursor-pointer`}
                     id={`plan_tile_${plan.id}`}
                   >
+                    {/* Left: radio + name + duration */}
                     <div className="flex items-center gap-3">
                       {/* Radio dot */}
                       <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-                        isSelected ? "border-neutral-900 bg-neutral-900" : "border-neutral-300"
+                        isSelected ? "border-white bg-white" : "border-neutral-300"
                       }`}>
-                        {isSelected && <span className="block w-1.5 h-1.5 rounded-full bg-white" />}
+                        {isSelected && <span className="block w-1.5 h-1.5 rounded-full bg-neutral-900" />}
                       </div>
 
                       <div>
                         <div className="flex items-center gap-2">
                           <PlanIcon id={plan.id} />
-                          <span className="font-extrabold text-sm text-neutral-900">{plan.name}</span>
+                          <span className={`font-extrabold text-sm ${ isSelected ? "text-white" : "text-neutral-900"}`}>{plan.name}</span>
                           {plan.popular && (
-                            <span className="text-[9px] bg-neutral-950 text-white font-mono uppercase font-bold tracking-wide px-1.5 py-0.5 rounded">
+                            <span className="text-[9px] bg-emerald-500 text-white font-bold uppercase tracking-wide px-1.5 py-0.5 rounded">
                               Popular
                             </span>
                           )}
                         </div>
-                        <span className="text-[11px] text-neutral-400 mt-0.5 block">{plan.period}</span>
+                        <span className={`text-[11px] mt-0.5 block ${ isSelected ? "text-neutral-400" : "text-neutral-400"}`}>{plan.period}</span>
                       </div>
                     </div>
 
-                    <div className="text-right shrink-0 ml-3">
-                      <span className="text-[10px] text-neutral-400 line-through block">₹{plan.originalPrice}</span>
-                      <span className="text-xl font-black text-neutral-900 font-mono">₹{plan.price}</span>
+                    {/* Right: prices + discount badge */}
+                    <div className="text-right shrink-0 ml-3 flex flex-col items-end gap-1">
+                      {/* Discount badge */}
+                      {plan.discount && (
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                          isSelected
+                            ? "bg-emerald-400 text-neutral-900"
+                            : "bg-emerald-100 text-emerald-700"
+                        }`}>
+                          {plan.discount}
+                        </span>
+                      )}
+                      {/* Strike price */}
+                      <span className={`text-[10px] line-through ${ isSelected ? "text-neutral-500" : "text-neutral-400"}`}>₹{plan.originalPrice}</span>
+                      {/* Final price — HIGHLIGHTED */}
+                      <span className={`text-2xl font-black font-mono leading-none ${
+                        isSelected ? "text-white" : "text-neutral-900"
+                      }`}>
+                        ₹{plan.price}
+                      </span>
                     </div>
                   </button>
                 );

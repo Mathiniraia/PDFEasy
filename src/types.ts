@@ -31,7 +31,7 @@ export interface ToolWorkspaceProps {
 }
 
 export interface PaymentPlan {
-  id: "daily" | "weekly" | "monthly";
+  id: "starter" | "monthly" | "annual";
   name: string;
   price: number;
   period: string;
@@ -39,4 +39,5 @@ export interface PaymentPlan {
   originalPrice?: number;
   benefits: string[];
   description?: string;
+  discount?: string;
 }

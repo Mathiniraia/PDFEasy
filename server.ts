@@ -429,15 +429,21 @@ function isPremiumActive(entry: { unlockedUntil: number }): boolean {
 
 /** Duration in ms for each plan */
 const PLAN_DURATIONS: Record<string, number> = {
-  daily:   24 * 60 * 60 * 1000,        // 24 hours
-  weekly:  7  * 24 * 60 * 60 * 1000,   // 7 days
-  monthly: 30 * 24 * 60 * 60 * 1000,   // 30 days
+  starter: 7   * 24 * 60 * 60 * 1000,   // 7 days
+  monthly: 30  * 24 * 60 * 60 * 1000,   // 30 days
+  annual:  365 * 24 * 60 * 60 * 1000,   // 1 year
+  // Legacy fallbacks
+  daily:   24  * 60 * 60 * 1000,
+  weekly:  7   * 24 * 60 * 60 * 1000,
 };
 
 const PLAN_LABELS: Record<string, string> = {
+  starter: "Starter (7 days)",
+  monthly: "Monthly Pro (30 days)",
+  annual:  "Annual Pro (1 year)",
+  // Legacy fallbacks
   daily:   "Daily Pass (24h)",
   weekly:  "Weekly Pass (7 days)",
-  monthly: "Monthly Pro (30 days)",
 };
 
 function saveUsage() {
