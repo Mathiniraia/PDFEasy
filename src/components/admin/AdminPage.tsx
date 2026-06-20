@@ -369,7 +369,7 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
   ] as const;
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="min-h-screen bg-neutral-50 admin-dashboard-scale">
 
       {/* Toasts */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
@@ -416,47 +416,6 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-5">
-
-        {/* ── Quick Grant Panel ──────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-center">
-                <Zap size={14} className="text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-neutral-900">Grant Access</p>
-                <p className="text-[10px] text-neutral-400">Give any user premium access instantly</p>
-              </div>
-            </div>
-            <button onClick={() => setShowGrant(p => !p)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-neutral-900 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl transition cursor-pointer">
-              <ChevronDown size={11} className={showGrant ? "rotate-180 transition-transform" : "transition-transform"} />
-              {showGrant ? "Close" : "Grant Access to User"}
-            </button>
-          </div>
-          {showGrant && (
-            <form onSubmit={handleManualGrant} className="mt-4 flex flex-wrap gap-3 items-end border-t border-neutral-100 pt-4">
-              <div className="flex-1 min-w-[200px]">
-                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">User Email</label>
-                <input type="email" value={manualEmail} onChange={e => setManualEmail(e.target.value)}
-                  placeholder="user@example.com" required autoFocus
-                  className="w-full px-3 py-2.5 text-sm border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-400 transition" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">Plan</label>
-                <select value={manualPlan} onChange={e => setManualPlan(e.target.value)}
-                  className="px-3 py-2.5 text-sm border border-neutral-200 rounded-xl bg-white cursor-pointer focus:outline-none">
-                  {GRANT_PLANS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
-              </div>
-              <button type="submit" disabled={!!acting}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition cursor-pointer disabled:opacity-50 flex items-center gap-2">
-                <CheckCircle size={14} /> Grant Access
-              </button>
-            </form>
-          )}
-        </div>
 
         {/* ── Navigation Tabs ────────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 border-b border-neutral-200 overflow-x-auto pb-0">
@@ -656,7 +615,7 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
                         <th className="px-4 py-3">Usage</th>
                         <th className="px-4 py-3">Joined</th>
                         <th className="px-4 py-3">Flags</th>
-                        <th className="px-4 py-3 min-w-[280px]">Actions</th>
+                        <th className="px-4 py-3 min-w-[150px]">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-50 text-xs">
@@ -746,24 +705,31 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
                               </div>
                             </td>
 
-                            {/* Actions */}
+                            {/* Actions — single dropdown */}
                             <td className="px-4 py-3.5">
                               {!user.isAdmin && user.email ? (
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  {GRANT_PLANS.map(p => (
-                                    <button key={p.id} disabled={!!acting}
-                                      onClick={() => grantAccess(user.email!, p.id)}
-                                      className={`text-[9px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer disabled:opacity-40 ${p.color}`}>
-                                      {acting===`${user.email}:${p.id}` ? "…" : p.label}
-                                    </button>
-                                  ))}
+                                <select
+                                  disabled={!!acting}
+                                  value=""
+                                  onChange={e => {
+                                    const v = e.target.value;
+                                    if (!v) return;
+                                    if (v === "revoke") revokeAccess(user.email!);
+                                    else grantAccess(user.email!, v);
+                                    e.target.value = "";
+                                  }}
+                                  className="text-[11px] font-medium px-2 py-1.5 rounded-lg border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 cursor-pointer disabled:opacity-40 outline-none focus:ring-1 focus:ring-blue-400 transition"
+                                >
+                                  <option value="">
+                                    {acting && acting.startsWith(user.email) ? "…" : "Grant access…"}
+                                  </option>
+                                  <option value="starter">7 Days</option>
+                                  <option value="monthly">1 Month</option>
+                                  <option value="annual">1 Year</option>
                                   {user.premiumActive && !user.accessRevoked && (
-                                    <button disabled={!!acting} onClick={() => revokeAccess(user.email!)}
-                                      className="text-[9px] font-bold px-2 py-1 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition cursor-pointer disabled:opacity-40 flex items-center gap-0.5">
-                                      {acting===`${user.email}:revoke` ? "…" : <><Ban size={8}/> Revoke</>}
-                                    </button>
+                                    <option value="revoke">⛔ Revoke Access</option>
                                   )}
-                                </div>
+                                </select>
                               ) : <span className="text-[10px] text-neutral-200">Admin account</span>}
                             </td>
                           </tr>

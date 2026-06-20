@@ -76,4 +76,20 @@
   animation: unlock-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
+/* Scale up admin dashboard typography one step bigger */
+.admin-dashboard-scale {
+  font-size: 1.05rem;
+}
+.admin-dashboard-scale .text-\[9px\] { font-size: 11px !important; }
+.admin-dashboard-scale .text-\[10px\] { font-size: 12px !important; }
+.admin-dashboard-scale .text-\[11px\] { font-size: 13px !important; }
+.admin-dashboard-scale .text-xs { font-size: 14px !important; }
+.admin-dashboard-scale .text-sm { font-size: 16px !important; }
+.admin-dashboard-scale .text-base { font-size: 18px !important; }
+.admin-dashboard-scale .text-lg { font-size: 20px !important; }
+.admin-dashboard-scale .text-xl { font-size: 24px !important; }
+.admin-dashboard-scale .text-2xl { font-size: 28px !important; }
+.admin-dashboard-scale .text-3xl { font-size: 34px !important; }
+
+
 
