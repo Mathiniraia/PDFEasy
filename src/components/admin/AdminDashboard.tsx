@@ -37,9 +37,10 @@ interface CRMUser {
 }
 
 const GRANT_PLANS = [
-  { id: "starter",  label: "7 Days",   color: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" },
-  { id: "monthly",  label: "1 Month",  color: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" },
-  { id: "annual",   label: "1 Year",   color: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
+  { id: "starter",  label: "7 Days",    color: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100" },
+  { id: "monthly",  label: "1 Month",   color: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" },
+  { id: "annual",   label: "1 Year",    color: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100" },
+  { id: "lifetime", label: "Lifetime",  color: "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100" },
 ];
 
 function timeAgo(isoDate: string): string {
@@ -148,6 +149,28 @@ export default function AdminDashboard({
     setGrantEmail("");
     setGrantLoading(false);
     setShowGrant(false);
+  };
+
+  const revokeAccess = async (email: string) => {
+    if (!confirm(`Revoke ALL access for ${email}?`)) return;
+    setGrantingFor(`${email}:revoke`);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/revoke-access`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-secret": ADMIN_SECRET
+        },
+        body: JSON.stringify({ email })
+      });
+      const json = await res.json();
+      addToast(res.ok, json.message || json.error);
+      if (res.ok) await fetchUsers();
+    } catch (e: any) {
+      addToast(false, e.message);
+    } finally {
+      setGrantingFor(null);
+    }
   };
 
   // Stats
@@ -399,7 +422,7 @@ export default function AdminDashboard({
                         </div>
                       </div>
 
-                      {/* Grant Buttons — only non-admins */}
+                      {/* Grant + Revoke Buttons — only non-admins */}
                       {!user.isAdmin && user.email && (
                         <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                           <span className="text-[9px] text-neutral-400 font-bold">Grant:</span>
@@ -407,12 +430,22 @@ export default function AdminDashboard({
                             <button
                               key={plan.id}
                               onClick={() => grantAccess(user.email!, plan.id)}
-                              disabled={grantingFor === `${user.email}:${plan.id}`}
+                              disabled={!!grantingFor}
                               className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg border transition cursor-pointer disabled:opacity-40 ${plan.color}`}
                             >
                               {grantingFor === `${user.email}:${plan.id}` ? "..." : plan.label}
                             </button>
                           ))}
+                          {/* Revoke button — only show if user has active access */}
+                          {user.premiumActive && (
+                            <button
+                              onClick={() => revokeAccess(user.email!)}
+                              disabled={!!grantingFor}
+                              className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition cursor-pointer disabled:opacity-40"
+                            >
+                              {grantingFor === `${user.email}:revoke` ? "..." : "🚫 Revoke"}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

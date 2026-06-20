@@ -493,21 +493,23 @@ function isPremiumActive(entry: { unlockedUntil: number }): boolean {
 
 /** Duration in ms for each plan */
 const PLAN_DURATIONS: Record<string, number> = {
-  starter: 7   * 24 * 60 * 60 * 1000,   // 7 days
-  monthly: 30  * 24 * 60 * 60 * 1000,   // 30 days
-  annual:  365 * 24 * 60 * 60 * 1000,   // 1 year
+  starter:  7   * 24 * 60 * 60 * 1000,   // 7 days
+  monthly:  30  * 24 * 60 * 60 * 1000,   // 30 days
+  annual:   365 * 24 * 60 * 60 * 1000,   // 1 year
+  lifetime: Infinity,                      // forever
   // Legacy fallbacks
-  daily:   24  * 60 * 60 * 1000,
-  weekly:  7   * 24 * 60 * 60 * 1000,
+  daily:    24  * 60 * 60 * 1000,
+  weekly:   7   * 24 * 60 * 60 * 1000,
 };
 
 const PLAN_LABELS: Record<string, string> = {
-  starter: "Starter (7 days)",
-  monthly: "Monthly Pro (30 days)",
-  annual:  "Annual Pro (1 year)",
+  starter:  "Starter (7 days)",
+  monthly:  "Monthly Pro (30 days)",
+  annual:   "Annual Pro (1 year)",
+  lifetime: "Lifetime Access",
   // Legacy fallbacks
-  daily:   "Daily Pass (24h)",
-  weekly:  "Weekly Pass (7 days)",
+  daily:    "Daily Pass (24h)",
+  weekly:   "Weekly Pass (7 days)",
 };
 
 function saveUsage() {
@@ -664,17 +666,37 @@ app.post("/api/usage/unlock", async (req, res) => {
 
   console.log(`[Usage Unlock] ${email || ipKey} → ${planLabel}, expires ${new Date(expiresAt).toISOString()}`);
 
-  // Sync premium unlock to Supabase
+  // Sync premium unlock to Supabase (plan + expiry + revoked flag)
   if (email && email.trim()) {
     const encryptedEmail = encryptData(email);
     supabase
       .from("crm_users")
-      .update({ plan_status: planId })
+      .update({
+        plan_status: planId,
+        plan_expires_at: new Date(expiresAt).toISOString(),
+        access_revoked: false,
+      })
       .eq("encrypted_email", encryptedEmail)
       .then(({ error }) => {
         if (error) console.warn("Supabase unlock sync warning:", error.message);
-        else console.log(`[CRM Sync] Plan '${planId}' activated for ${email}`);
+        else console.log(`[CRM Sync] Plan '${planId}' activated for ${email}, expires ${new Date(expiresAt).toISOString()}`);
       });
+
+    // Insert into crm_transactions
+    const planAmounts: Record<string, number> = { starter: 99, monthly: 199, annual: 999 };
+    supabase.from("crm_transactions").insert({
+      id: crypto.randomUUID(),
+      user_id: null,  // populated by CRM via email lookup
+      razorpay_payment_id: `pay_${Date.now()}`,
+      plan_type: planLabel,
+      amount: planAmounts[planId] ?? 199,
+      plan_expires_at: new Date(expiresAt).toISOString(),
+      status: "captured",
+      created_at: new Date().toISOString(),
+    }).then(({ error }) => {
+      if (error) console.warn("[CRM] Transaction insert warning:", error.message);
+      else console.log(`[CRM Transactions] Payment recorded for ${email}`);
+    });
   }
 
   res.json({ success: true, planExpiresAt: expiresAt, planName: planLabel });
@@ -736,17 +758,36 @@ app.post("/api/admin/grant-access", async (req, res) => {
 
   console.log(`[Admin Grant] ${email} → ${planLabel}, expires ${new Date(expiresAt).toISOString()}`);
 
-  // Sync to Supabase
+  // Sync to Supabase — plan, expiry, admin flag
   if (email.trim()) {
     const encryptedEmail = encryptData(email);
     supabase
       .from("crm_users")
-      .update({ plan_status: planId })
+      .update({
+        plan_status: planId,
+        plan_expires_at: new Date(expiresAt).toISOString(),
+        access_revoked: false,
+        granted_by_admin: true,
+      })
       .eq("encrypted_email", encryptedEmail)
       .then(({ error }) => {
         if (error) console.warn("Supabase admin grant sync warning:", error.message);
-        else console.log(`[CRM Sync] Admin granted '${planId}' to ${email}`);
+        else console.log(`[CRM Sync] Admin granted '${planId}' to ${email} until ${new Date(expiresAt).toISOString()}`);
       });
+
+    // Log admin grant as a transaction
+    supabase.from("crm_transactions").insert({
+      id: crypto.randomUUID(),
+      user_id: null,
+      razorpay_payment_id: `admin_grant_${Date.now()}`,
+      plan_type: `${planLabel} (Admin Grant)`,
+      amount: 0,
+      plan_expires_at: new Date(expiresAt).toISOString(),
+      status: "admin_grant",
+      created_at: new Date().toISOString(),
+    }).then(({ error }) => {
+      if (error) console.warn("[CRM] Admin grant transaction insert warning:", error.message);
+    });
   }
 
   res.json({
@@ -755,6 +796,51 @@ app.post("/api/admin/grant-access", async (req, res) => {
     plan: planLabel,
     expiresAt: new Date(expiresAt).toISOString(),
   });
+});
+
+// ─── ADMIN: Revoke access from a user ─────────────────────────────────────
+// POST /api/admin/revoke-access
+// Headers: x-admin-secret: <your-admin-secret>
+// Body: { email: "user@example.com" }
+app.post("/api/admin/revoke-access", async (req, res) => {
+  if (!isAdminRequest(req)) {
+    return res.status(403).json({ error: "Unauthorized." });
+  }
+
+  const { email } = req.body;
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({ error: "Valid email is required." });
+  }
+
+  if (isAdminEmail(email)) {
+    return res.status(400).json({ error: "Cannot revoke admin access." });
+  }
+
+  // Revoke in local store
+  const emailKey = `email:${email.trim().toLowerCase()}`;
+  if (ipUsageStore[emailKey]) {
+    ipUsageStore[emailKey].unlockedUntil = 0;
+    ipUsageStore[emailKey].planName = "free";
+  }
+  saveUsage();
+
+  // Revoke in Supabase
+  const encryptedEmail = encryptData(email);
+  supabase
+    .from("crm_users")
+    .update({
+      plan_status: "free",
+      plan_expires_at: null,
+      access_revoked: true,
+    })
+    .eq("encrypted_email", encryptedEmail)
+    .then(({ error }) => {
+      if (error) console.warn("Supabase revoke sync warning:", error.message);
+      else console.log(`[CRM Revoke] Access revoked for ${email}`);
+    });
+
+  console.log(`[Admin Revoke] Access revoked for ${email}`);
+  res.json({ success: true, message: `🚫 Access revoked for ${email}` });
 });
 
 // ─── ADMIN: List all users with access ────────────────────────────────────
