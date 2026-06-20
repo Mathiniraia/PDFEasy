@@ -496,7 +496,7 @@ const PLAN_DURATIONS: Record<string, number> = {
   starter:  7   * 24 * 60 * 60 * 1000,   // 7 days
   monthly:  30  * 24 * 60 * 60 * 1000,   // 30 days
   annual:   365 * 24 * 60 * 60 * 1000,   // 1 year
-  lifetime: Infinity,                      // forever
+  lifetime: new Date("2099-12-31").getTime() - Date.now(), // far-future = lifetime
   // Legacy fallbacks
   daily:    24  * 60 * 60 * 1000,
   weekly:   7   * 24 * 60 * 60 * 1000,
@@ -779,6 +779,7 @@ app.post("/api/admin/grant-access", async (req, res) => {
     supabase.from("crm_transactions").insert({
       id: crypto.randomUUID(),
       user_id: null,
+      user_name: email,
       razorpay_payment_id: `admin_grant_${Date.now()}`,
       plan_type: `${planLabel} (Admin Grant)`,
       amount: 0,
