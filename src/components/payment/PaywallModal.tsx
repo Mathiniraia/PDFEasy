@@ -322,6 +322,9 @@ export default function PaywallModal({
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
                 isDemo: false,
+                planId: selectedPlan.id,
+                email: currentUserEmail || "",
+                displayName: currentUserEmail?.split("@")[0] || "User",
               }),
             });
             const verification = await verifyRes.json();

@@ -105,9 +105,27 @@ app.post("/api/razorpay/order", async (req, res) => {
 
 // Mock/Sandbox verify-payment endpoint
 app.post("/api/razorpay/verify", async (req, res) => {
-  const { orderId, paymentId, signature, isDemo } = req.body;
+  const { orderId, paymentId, signature, isDemo, planId, email, displayName } = req.body;
+
+  const planLabelMap: Record<string, string> = {
+    starter: "Starter",
+    monthly: "Monthly Pro",
+    annual:  "Annual Pro",
+  };
+  const planLabel = planLabelMap[planId] || "Monthly Pro";
+
   if (isDemo || !getRazorpay()) {
-    // Automatically succeed in sandbox mode
+    // Sandbox: still sync to CRM so you can see the flow
+    if (email) {
+      const encryptedContact = encryptData(email);
+      notifyCRM({
+        customerName: displayName || email.split("@")[0],
+        planType: planLabel,
+        contactNumberOrEmail: encryptedContact,
+        razorpayPaymentId: paymentId || `demo_${Date.now()}`
+      });
+      console.log(`[CRM Payment] Demo payment synced for ${email} → ${planLabel}`);
+    }
     return res.json({ success: true, message: "Demo transaction verified successfully!" });
   }
   
@@ -124,6 +142,17 @@ app.post("/api/razorpay/verify", async (req, res) => {
     .digest("hex");
 
   if (generatedSignature === signature) {
+    // ✅ Real payment verified — sync to CRM
+    if (email) {
+      const encryptedContact = encryptData(email);
+      notifyCRM({
+        customerName: displayName || email.split("@")[0],
+        planType: planLabel,
+        contactNumberOrEmail: encryptedContact,
+        razorpayPaymentId: paymentId
+      });
+      console.log(`[CRM Payment] Real payment synced for ${email} → ${planLabel} (${paymentId})`);
+    }
     return res.json({ success: true });
   } else {
     return res.status(400).json({ error: "Payment verification failed" });
@@ -320,6 +349,19 @@ const supabaseUrl = process.env.SUPABASE_URL || "https://your-project-id.supabas
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "your-anon-key";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// CRM dashboard URL — change to your hosted CRM URL when deployed
+const CRM_URL = process.env.CRM_URL || "http://localhost:3001";
+const CRM_ADMIN_EMAIL = "mathinirai.a@gmail.com";
+
+/** Fire-and-forget CRM webhook — never blocks main response */
+function notifyCRM(payload: Record<string, any>) {
+  fetch(`${CRM_URL}/api/admin/trigger-webhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-email": CRM_ADMIN_EMAIL },
+    body: JSON.stringify(payload)
+  }).catch(err => console.warn("[CRM] Webhook unreachable (non-blocking):", err.message));
+}
+
 app.post("/api/crm/sync-user", async (req, res) => {
   try {
     const { displayName, avatarUrl, email, phone, authProvider, planStatus } = req.body;
@@ -334,28 +376,13 @@ app.post("/api/crm/sync-user", async (req, res) => {
     const contactInfo = email || phone || "";
     const encryptedContactInfo = contactInfo ? encryptData(contactInfo) : "";
 
-    try {
-      const crmResponse = await fetch("http://localhost:3001/api/admin/trigger-webhook", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-email": "mathinirai.a@gmail.com"
-        },
-        body: JSON.stringify({
-          customerName: displayName,
-          planType: planStatus === "pro" ? "Monthly Pro" : "Daily Pass",
-          contactNumberOrEmail: encryptedContactInfo
-        })
-      });
-
-      if (!crmResponse.ok) {
-        const errText = await crmResponse.text();
-        console.warn("CRM returned error status:", crmResponse.status, errText);
-      }
-    } catch (crmErr: any) {
-      // CRM webhook is optional — don't fail the entire sync if CRM is unreachable
-      console.warn("CRM webhook unreachable (non-blocking):", crmErr.message);
-    }
+    // 1. Notify CRM dashboard (fire-and-forget)
+    notifyCRM({
+      customerName: displayName,
+      planType: planStatus === "pro" ? "Monthly Pro" : "Starter",
+      contactNumberOrEmail: encryptedContactInfo
+    });
+    console.log(`[CRM Sync] Notified CRM for user: ${displayName}`);
 
     // 2. Sync to Supabase Database (with graceful fallback for missing columns)
     const fullPayload: Record<string, any> = {
@@ -560,7 +587,7 @@ app.post("/api/usage/increment", async (req, res) => {
   entry.count += 1;
   saveUsage();
 
-  // Sync updated task count to Supabase
+  // Sync usage count to Supabase
   if (email && email.trim()) {
     const encryptedEmail = encryptData(email);
     supabase
@@ -569,11 +596,33 @@ app.post("/api/usage/increment", async (req, res) => {
       .eq("encrypted_email", encryptedEmail)
       .then(({ error }) => {
         if (error) console.warn("Supabase usage sync warning:", error.message);
-        else console.log(`[Usage Sync] Task count updated to ${entry.count} for ${email}`);
       });
   }
 
-  res.json({ allowed: true, count: entry.count });
+  // Sync tool usage to CRM tool analytics
+  const { toolSlug } = req.body;
+  if (toolSlug) {
+    supabase
+      .from("crm_tool_analytics")
+      .select("count")
+      .eq("tool_slug", toolSlug)
+      .single()
+      .then(({ data }) => {
+        const newCount = (data?.count || 0) + 1;
+        supabase
+          .from("crm_tool_analytics")
+          .upsert({ tool_slug: toolSlug, count: newCount }, { onConflict: "tool_slug" })
+          .then(({ error }) => {
+            if (error) console.warn("[CRM Tool Analytics] sync warning:", error.message);
+            else console.log(`[CRM Tool Analytics] ${toolSlug} → ${newCount} uses`);
+          });
+      });
+  }
+
+  res.json({
+    allowed: true,
+    count: entry.count,
+  });
 });
 
 app.post("/api/usage/unlock", async (req, res) => {
