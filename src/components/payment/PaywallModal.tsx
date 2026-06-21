@@ -137,11 +137,15 @@ export default function PaywallModal({
 
   useEffect(() => {
     if (isOpen) {
-      setStep(usageLimitReached ? "limit_warning" : "plans");
+      if (planExpiresAt && planExpiresAt > Date.now()) {
+        setStep("active_subscription");
+      } else {
+        setStep(usageLimitReached ? "limit_warning" : "plans");
+      }
       setErrorMessage("");
       setShowSandboxUI(false);
     }
-  }, [isOpen, usageLimitReached]);
+  }, [isOpen, usageLimitReached, planExpiresAt]);
 
   useEffect(() => {
     const script = document.createElement("script");
@@ -451,6 +455,37 @@ export default function PaywallModal({
             <div className="flex items-center justify-center gap-2 text-xs text-neutral-400 mt-2 font-mono">
               <RefreshCw size={12} className="animate-spin" /> Unlocking premium features…
             </div>
+          </div>
+
+        /* ── ACTIVE SUBSCRIPTION ────────────────────────────────────────── */
+        ) : step === "active_subscription" ? (
+          <div id="active_sub_panel" className="p-8 text-center flex flex-col items-center">
+            <div className="w-full flex justify-end mb-2">
+              <button onClick={onClose} className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-black transition">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mb-6">
+              <CheckCircle2 size={40} />
+            </div>
+            <h2 className="text-3xl font-black text-neutral-900 tracking-tight leading-tight mb-4">
+              You are a Premium Customer
+            </h2>
+            <p className="text-neutral-500 mb-6 text-sm max-w-sm">
+              You have already unlocked unlimited access to PDF Easy. You can continue using all premium features without any limits!
+            </p>
+            {planExpiresAt && (
+              <div className="mb-8 px-4 py-3 bg-neutral-50 rounded-xl border border-neutral-200">
+                <p className="text-xs text-neutral-500 font-mono">Access valid until</p>
+                <p className="text-sm font-bold text-neutral-800">{new Date(planExpiresAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              className="w-full py-4 rounded-xl bg-neutral-900 text-white font-bold text-sm hover:bg-black transition shadow-xl"
+            >
+              Continue Working
+            </button>
           </div>
 
         /* ── SIGN-IN STEP ─────────────────────────────────────────────────── */
