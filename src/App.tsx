@@ -686,14 +686,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Hidden admin testing restorer */}
-            <button 
-              onClick={resetPremiumLicenseForDemo}
-              title="Reset Usage limits for testing"
-              className="p-1 hover:bg-neutral-100 text-neutral-300 hover:text-red-400 rounded transition"
-            >
-              <RefreshCw size={11} />
-            </button>
+
           </div>
 
           {/* Admin Dashboard Modal */}

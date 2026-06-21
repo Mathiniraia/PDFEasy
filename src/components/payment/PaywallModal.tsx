@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { 
   X, Check, Sparkles, ShieldCheck, Loader2,
   Lock, Info, RefreshCw, Mail, Eye, EyeOff,
-  Clock, Calendar, Zap, Chrome, Phone
+  Clock, Calendar, Zap, Chrome, Phone, AlertCircle
 } from "lucide-react";
 import { PaymentPlan } from "../../types";
 import { signInWithPopup, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
@@ -72,7 +72,7 @@ const PLANS: PaymentPlan[] = [
   },
 ];
 
-type ModalStep = "plans" | "signin" | "email-signin" | "phone-signin" | "checkout" | "success";
+type ModalStep = "limit_warning" | "plans" | "signin" | "email-signin" | "phone-signin" | "checkout" | "success";
 
 function formatExpiry(ms: number): string {
   const now = Date.now();
@@ -97,7 +97,7 @@ export default function PaywallModal({
   onUserSignedIn,
 }: PaywallModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<PaymentPlan>(PLANS[1]);
-  const [step, setStep] = useState<ModalStep>("plans");
+  const [step, setStep] = useState<ModalStep>(usageLimitReached ? "limit_warning" : "plans");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -834,6 +834,37 @@ export default function PaywallModal({
             )}
           </div>
 
+        /* ── LIMIT WARNING STEP ────────────────────────────────────────────── */
+        ) : step === "limit_warning" ? (
+          <div id="limit_warning_panel" className="p-6 md:p-8 flex flex-col items-center text-center">
+            <div className="w-full flex justify-end mb-2">
+              <button onClick={onClose} className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-400 hover:text-black transition">
+                <X size={16} />
+              </button>
+            </div>
+            
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6">
+              <AlertCircle size={32} />
+            </div>
+
+            <h2 className="text-2xl font-black text-neutral-900 tracking-tight leading-tight mb-3">
+              You've reached today's free limit
+            </h2>
+            
+            <p className="text-sm text-neutral-500 leading-relaxed mb-6">
+              Your free access has been fully used for today. It will refresh in 24 hours,
+              <br/><br/>
+              <span className="font-bold text-neutral-800">or you can upgrade now for instant access.</span>
+            </p>
+
+            <button
+              onClick={() => setStep("plans")}
+              className="w-full py-4 rounded-xl bg-neutral-900 text-white text-sm font-bold hover:bg-black transition shadow-md"
+            >
+              Unlock Pro →
+            </button>
+          </div>
+
         /* ── PLANS STEP (FIRST SCREEN PAY PAY pay) ───────────────────────── */
         ) : (
           <div id="plans_paywall_panel" className="p-6 md:p-8 flex flex-col">
@@ -855,16 +886,12 @@ export default function PaywallModal({
               </div>
 
               <h2 className="text-xl font-extrabold text-neutral-900 mt-4 tracking-tight leading-tight">
-                {usageLimitReached 
-                  ? "You are using your daily limit"
-                  : planExpiresAt && planExpiresAt < Date.now()
+                {planExpiresAt && planExpiresAt < Date.now()
                   ? "Your Premium Access Has Expired"
                   : "Choose Your Premium Plan"}
               </h2>
               <p className="text-xs text-neutral-500 mt-1">
-                {usageLimitReached
-                  ? "Your limit will reset after 24 hours. If you want immediate access, please unlock below."
-                  : "Unlock continuous, high-speed access to all 12 PDF workspace utility tools."}
+                Unlock continuous, high-speed access to all 12 PDF workspace utility tools.
               </p>
             </div>
 
