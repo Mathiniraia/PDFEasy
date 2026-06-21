@@ -648,7 +648,7 @@ function getUsageKey(req: express.Request, email?: string): string {
   return `ip:${ipStr.trim()}`;
 }
 
-app.get("/api/usage/status", (req, res) => {
+app.get("/api/usage/status", async (req, res) => {
   const email = req.query.email as string | undefined;
 
   // ── Admin whitelist: permanent lifetime access ──
@@ -656,7 +656,7 @@ app.get("/api/usage/status", (req, res) => {
     return res.json({
       count: 0,
       allowed: true,
-      premium: true,
+      premiumUnlocked: true,
       planExpiresAt: 9999999999999, // far future = lifetime
       planName: "Admin (Lifetime)",
       isAdmin: true,
@@ -671,7 +671,7 @@ app.get("/api/usage/status", (req, res) => {
   }
 
   const entry = ipUsageStore[key];
-  const active = isPremiumActive(entry);
+  let active = isPremiumActive(entry);
 
   // Auto-expire: if plan ended, keep count but clear premium
   if (!active && entry.unlockedUntil > 0 && entry.unlockedUntil !== Infinity) {
@@ -679,11 +679,35 @@ app.get("/api/usage/status", (req, res) => {
     entry.planName = "free";
     saveUsage();
   }
+
+  // Fallback for Vercel Serverless Cold Starts: Restore session from Supabase
+  if (!active && email) {
+    try {
+      const { data } = await supabase
+        .from("crm_users")
+        .select("plan_expires_at, plan_status, access_revoked")
+        .eq("encrypted_email", encryptData(email))
+        .single();
+      
+      if (data && !data.access_revoked && data.plan_expires_at) {
+        const expires = new Date(data.plan_expires_at).getTime();
+        if (expires > Date.now()) {
+          entry.unlockedUntil = expires;
+          entry.planName = data.plan_status || "pro";
+          saveUsage();
+          active = true;
+          console.log(`[Cold Start Restore] Restored premium for ${email}`);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to restore session from Supabase:", e);
+    }
+  }
   
   res.json({
     count: entry.count,
     premiumUnlocked: active,
-    planExpiresAt: active ? entry.unlockedUntil : null,
+    planExpiresAt: active ? (entry.unlockedUntil === Infinity ? 9999999999999 : entry.unlockedUntil) : null,
     planName: active ? entry.planName : null,
   });
 });
