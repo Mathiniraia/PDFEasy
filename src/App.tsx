@@ -1386,20 +1386,20 @@ export default function App() {
                 {/* Left Side: Content & Action */}
                 <div className="flex-1 text-left space-y-6 max-w-xl">
                   <span className="text-xs font-mono uppercase tracking-widest text-neutral-400 font-bold block">
-                    A Brief History of the Layout
+                    A BRIEF HISTORY OF PDF
                   </span>
                   
                   <div className="space-y-3">
                     <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-900 leading-tight">
-                      Intact Across Every Screen
+                      One Format. Every Device.
                     </h3>
                     <p className="text-xs sm:text-[13px] font-semibold text-neutral-500 uppercase tracking-wider font-mono">
-                      How the Portable Document Format became a quiet bridge between billions of devices.
+                      HOW A SOLUTION TO DOCUMENT FORMATTING BECAME A GLOBAL STANDARD.
                     </p>
                   </div>
 
                   <p className="text-neutral-600 text-[13px] sm:text-sm leading-relaxed">
-                    First launched in 1993, the PDF was created to preserve fonts, vector layouts, and formatting exactly as intended—no matter the software or device. It became the universal standard for contracts, records, and templates. Unlock unlimited access to this format's full potential.
+                    What began as a solution to formatting issues in the early 1990s became one of the most widely used file formats in the world. By preserving documents exactly as intended across different devices and operating systems, PDF transformed the way people share information. Today, it continues to connect businesses, organizations, and individuals through reliable document sharing.
                   </p>
 
                   <div className="pt-2">
@@ -1407,7 +1407,7 @@ export default function App() {
                       onClick={() => setIsPaywallOpen(true)}
                       className="bg-neutral-950 hover:bg-black text-white font-bold text-sm tracking-wide py-3.5 px-16 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer text-center w-64 inline-flex items-center justify-center gap-2"
                     >
-                      Unlock Pro
+                      Unlock Unlimited Access
                     </button>
                   </div>
                 </div>
