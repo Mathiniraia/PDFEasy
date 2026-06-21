@@ -1399,7 +1399,7 @@ export default function App() {
                   </div>
 
                   <p className="text-neutral-600 text-[13px] sm:text-sm leading-relaxed">
-                    What began as a solution to formatting issues in the early 1990s became one of the most widely used file formats in the world. By preserving documents exactly as intended across different devices and operating systems, PDF transformed the way people share information. Today, it continues to connect businesses, organizations, and individuals through reliable document sharing.
+                    Born in the early 1990s as a solution to formatting inconsistencies, the PDF has become a global standard for document sharing. By ensuring files appear exactly as intended across all devices and operating systems, it remains the most reliable way to connect businesses and individuals worldwide.
                   </p>
 
                   <div className="pt-2">
