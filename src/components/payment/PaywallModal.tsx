@@ -855,12 +855,16 @@ export default function PaywallModal({
               </div>
 
               <h2 className="text-xl font-extrabold text-neutral-900 mt-4 tracking-tight leading-tight">
-                {planExpiresAt && planExpiresAt < Date.now()
+                {usageLimitReached 
+                  ? "You are using your daily limit"
+                  : planExpiresAt && planExpiresAt < Date.now()
                   ? "Your Premium Access Has Expired"
                   : "Choose Your Premium Plan"}
               </h2>
               <p className="text-xs text-neutral-500 mt-1">
-                Unlock continuous, high-speed access to all 12 PDF workspace utility tools.
+                {usageLimitReached
+                  ? "Your limit will reset after 24 hours. If you want immediate access, please unlock below."
+                  : "Unlock continuous, high-speed access to all 12 PDF workspace utility tools."}
               </p>
             </div>
 
@@ -948,7 +952,7 @@ export default function PaywallModal({
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-neutral-900 text-white text-sm font-bold hover:bg-black transition shadow-md cursor-pointer"
               id="plans_continue_btn"
             >
-              {currentUserEmail ? "Proceed to Checkout →" : "Continue to Sign Up →"}
+              {usageLimitReached ? "Unlock Your Unlimited Access →" : currentUserEmail ? "Proceed to Checkout →" : "Continue to Sign Up →"}
             </button>
 
             <div className="mt-4 text-center text-[9.5px] text-neutral-400 font-mono">

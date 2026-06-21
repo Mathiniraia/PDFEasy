@@ -525,7 +525,10 @@ function getUsageKey(req: express.Request, email?: string): string {
     return `email:${email.trim().toLowerCase()}`;
   }
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || req.ip;
-  const ipStr = Array.isArray(ip) ? ip[0] : ip || "127.0.0.1";
+  let ipStr = Array.isArray(ip) ? ip[0] : ip || "127.0.0.1";
+  if (typeof ipStr === "string" && ipStr.includes(",")) {
+    ipStr = ipStr.split(",")[0];
+  }
   return `ip:${ipStr.trim()}`;
 }
 
