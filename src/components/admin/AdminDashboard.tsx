@@ -86,6 +86,8 @@ export default function AdminDashboard({
   const [search, setSearch] = useState("");
   const [filterPlan, setFilterPlan] = useState<"all" | "premium" | "free">("all");
   const [dateFilter, setDateFilter] = useState<string>("all-time");
+  const [customStartDate, setCustomStartDate] = useState<string>("");
+  const [customEndDate, setCustomEndDate] = useState<string>("");
   const [grantingFor, setGrantingFor] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: number; ok: boolean; msg: string }[]>([]);
 
@@ -193,9 +195,19 @@ export default function AdminDashboard({
       
       if (dateFilter === "last-24h" && diffDays > 1) matchDate = false;
       if (dateFilter === "last-7d" && diffDays > 7) matchDate = false;
-      if (dateFilter === "last-month" && diffDays > 30) matchDate = false;
+      if (dateFilter === "last-30d" && diffDays > 30) matchDate = false;
+      if (dateFilter === "last-calendar-month") {
+        const lastMonthDate = new Date();
+        lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
+        const isSameMonthAndYear = new Date(joined).getMonth() === lastMonthDate.getMonth() && new Date(joined).getFullYear() === lastMonthDate.getFullYear();
+        if (!isSameMonthAndYear) matchDate = false;
+      }
       if (dateFilter === "last-quarter" && diffDays > 90) matchDate = false;
       if (dateFilter === "last-year" && diffDays > 365) matchDate = false;
+      if (dateFilter === "custom") {
+        if (customStartDate && joined < new Date(customStartDate).getTime()) matchDate = false;
+        if (customEndDate && joined > new Date(customEndDate).getTime() + 86400000) matchDate = false;
+      }
     }
     return matchSearch && matchPlan && matchDate;
   });
@@ -344,53 +356,78 @@ export default function AdminDashboard({
             </div>
           </div>
 
-          {/* ── Filters ── */}
-          <div className="px-5 pt-3 pb-2 flex flex-wrap items-center gap-3 shrink-0">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-              <input
-                type="text"
-                placeholder="Search by name or email..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full text-xs pl-8 pr-4 py-2.5 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
-              />
+          {/* ── Filters & Export ── */}
+          <div className="px-5 pt-3 pb-2 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full text-xs pl-8 pr-4 py-2.5 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                />
+              </div>
+              <div className="flex gap-1 border border-neutral-200 rounded-lg p-1 bg-neutral-50">
+                {(["all", "premium", "free"] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setFilterPlan(f)}
+                    className={`text-[10px] font-bold px-3 py-1.5 rounded-md transition cursor-pointer capitalize ${
+                      filterPlan === f
+                        ? "bg-white text-neutral-900 shadow-sm border border-neutral-200/50"
+                        : "bg-transparent text-neutral-500 hover:text-neutral-700"
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              
+              <div className="relative border border-neutral-200 rounded-lg bg-white px-3 py-2.5 flex items-center gap-2">
+                 <Calendar size={12} className="text-neutral-400" />
+                 <select 
+                   value={dateFilter} 
+                   onChange={(e) => setDateFilter(e.target.value)}
+                   className="text-[10px] font-bold text-neutral-700 bg-transparent outline-none cursor-pointer uppercase tracking-wider"
+                 >
+                   <option value="all-time">All Time</option>
+                   <option value="last-24h">Last 24 Hours</option>
+                   <option value="last-7d">Last 7 Days</option>
+                   <option value="last-30d">Last 30 Days</option>
+                   <option value="last-calendar-month">Last Month</option>
+                   <option value="last-quarter">Last 90 Days</option>
+                   <option value="last-year">Last Year</option>
+                   <option value="custom">Custom Date Range</option>
+                 </select>
+              </div>
+
+              {dateFilter === "custom" && (
+                <div className="flex items-center gap-2 border border-neutral-200 rounded-lg bg-white px-3 py-1.5">
+                  <input 
+                    type="date" 
+                    value={customStartDate} 
+                    onChange={e => setCustomStartDate(e.target.value)}
+                    className="text-[10px] font-bold text-neutral-700 outline-none"
+                  />
+                  <span className="text-[10px] text-neutral-400">to</span>
+                  <input 
+                    type="date" 
+                    value={customEndDate} 
+                    onChange={e => setCustomEndDate(e.target.value)}
+                    className="text-[10px] font-bold text-neutral-700 outline-none"
+                  />
+                </div>
+              )}
             </div>
-            <div className="flex gap-1 border border-neutral-200 rounded-lg p-1 bg-neutral-50">
-              {(["all", "premium", "free"] as const).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setFilterPlan(f)}
-                  className={`text-[10px] font-bold px-3 py-1.5 rounded-md transition cursor-pointer capitalize ${
-                    filterPlan === f
-                      ? "bg-white text-neutral-900 shadow-sm border border-neutral-200/50"
-                      : "bg-transparent text-neutral-500 hover:text-neutral-700"
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
+
+            <div className="flex flex-col items-end gap-1">
+              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider">Export Data</span>
+              <button onClick={exportToCSV} className="flex items-center gap-2 px-4 py-2 border-2 border-emerald-500 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer text-[10px] font-bold uppercase tracking-wider">
+                 <Download size={14} /> Download CSV File
+              </button>
             </div>
-            
-            <div className="relative border border-neutral-200 rounded-lg bg-white px-3 py-2.5 flex items-center gap-2">
-               <Calendar size={12} className="text-neutral-400" />
-               <select 
-                 value={dateFilter} 
-                 onChange={(e) => setDateFilter(e.target.value)}
-                 className="text-[10px] font-bold text-neutral-700 bg-transparent outline-none cursor-pointer uppercase tracking-wider"
-               >
-                 <option value="all-time">All Time</option>
-                 <option value="last-24h">Last 24 Hours</option>
-                 <option value="last-7d">Last 7 Days</option>
-                 <option value="last-month">Last 30 Days</option>
-                 <option value="last-quarter">Last 90 Days</option>
-                 <option value="last-year">Last Year</option>
-               </select>
-            </div>
-            
-            <button onClick={exportToCSV} className="flex items-center gap-2 px-3 py-2 border border-neutral-200 rounded-lg bg-white hover:bg-neutral-50 text-neutral-700 transition cursor-pointer text-[10px] font-bold uppercase tracking-wider">
-               <Download size={12} /> Export CSV
-            </button>
           </div>
 
           {/* ── User Table ── */}
