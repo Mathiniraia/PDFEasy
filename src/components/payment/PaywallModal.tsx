@@ -369,7 +369,7 @@ export default function PaywallModal({
             });
             const verification = await verifyRes.json();
             if (verification.success) {
-              await triggerPaymentSuccess();
+              await triggerPaymentSuccess(response.razorpay_payment_id, orderData.id);
             } else {
               setErrorMessage("Payment verification failed. Contact support.");
             }
@@ -392,7 +392,7 @@ export default function PaywallModal({
     }
   };
 
-  const triggerPaymentSuccess = async () => {
+  const triggerPaymentSuccess = async (paymentId?: string, orderId?: string) => {
     // Hit unlock endpoint with planId so server stores the correct duration
     const email = currentUserEmail || localStorage.getItem("user_email") || "";
     let expiresAt: number | null = null;
@@ -402,7 +402,7 @@ export default function PaywallModal({
       const res = await fetch("/api/usage/unlock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, planId: selectedPlan.id }),
+        body: JSON.stringify({ email, planId: selectedPlan.id, paymentId, orderId }),
       });
       const data = await res.json();
       expiresAt = data.planExpiresAt ?? null;
@@ -422,7 +422,7 @@ export default function PaywallModal({
     setPayingSandbox(true);
     setTimeout(async () => {
       setPayingSandbox(false);
-      await triggerPaymentSuccess();
+      await triggerPaymentSuccess(`demo_pay_${Date.now()}`, `demo_order_${Date.now()}`);
     }, 1500);
   };
 

@@ -439,7 +439,8 @@ const IV_LENGTH = 16;
 
 
 export function encryptData(text: string): string {
-  const iv = crypto.randomBytes(IV_LENGTH);
+  if (!text) return "";
+  const iv = crypto.createHash("sha256").update(text).digest().slice(0, IV_LENGTH);
   const cipher = crypto.createCipheriv("aes-256-cbc", Buffer.from(ENCRYPTION_KEY), iv);
   let encrypted = cipher.update(text);
   encrypted = Buffer.concat([encrypted, cipher.final()]);
@@ -693,19 +694,24 @@ app.get("/api/usage/status", async (req, res) => {
     try {
       const { data } = await supabase
         .from("crm_users")
-        .select("plan_expires_at, plan_status, access_revoked")
+        .select("plan_expires_at, plan_status, access_revoked, usage_count")
         .eq("encrypted_email", encryptData(email))
         .single();
       
-      if (data && !data.access_revoked && data.plan_expires_at) {
-        const expires = new Date(data.plan_expires_at).getTime();
-        if (expires > Date.now()) {
-          entry.unlockedUntil = expires;
-          entry.planName = data.plan_status || "pro";
-          saveUsage();
-          active = true;
-          console.log(`[Cold Start Restore] Restored premium for ${email}`);
+      if (data) {
+        if (data.usage_count !== undefined && data.usage_count !== null) {
+          entry.count = data.usage_count;
         }
+        if (!data.access_revoked && data.plan_expires_at) {
+          const expires = new Date(data.plan_expires_at).getTime();
+          if (expires > Date.now()) {
+            entry.unlockedUntil = expires;
+            entry.planName = data.plan_status || "pro";
+            active = true;
+            console.log(`[Cold Start Restore] Restored premium for ${email}`);
+          }
+        }
+        saveUsage();
       }
     } catch (e) {
       console.warn("Failed to restore session from Supabase:", e);
@@ -848,7 +854,7 @@ app.post("/api/usage/log-action", async (req, res) => {
 });
 
 app.post("/api/usage/unlock", async (req, res) => {
-  const { email, planId } = req.body;
+  const { email, planId, paymentId, orderId } = req.body;
   
   const durationMs = PLAN_DURATIONS[planId] ?? PLAN_DURATIONS.daily;
   const planLabel  = PLAN_LABELS[planId]   ?? "Daily Pass (24h)";
@@ -899,13 +905,19 @@ app.post("/api/usage/unlock", async (req, res) => {
 
     // Insert into crm_transactions
     const planAmounts: Record<string, number> = { daily: 99, weekly: 99, starter: 99, monthly: 199, annual: 999 };
+    const planTypeMap: Record<string,string> = {
+      starter:"weekly", monthly:"monthly", annual:"annual", lifetime:"monthly",
+      daily:"daily", weekly:"weekly"
+    };
+    const dbPlanType = planTypeMap[planId] || "monthly";
+
     supabase.from("crm_transactions").insert({
       id: crypto.randomUUID(),
       user_id: null,  // populated by CRM via email lookup
       user_name: email, // add user_name for visual lookup in Payments tab
-      razorpay_payment_id: `pay_${Date.now()}`,
-      razorpay_order_id: `order_${Date.now()}`,
-      plan_type: planId, // use planId (starter, monthly, annual, daily, weekly) to pass Supabase ENUM check constraint
+      razorpay_payment_id: paymentId || `pay_${Date.now()}`,
+      razorpay_order_id: orderId || `order_${Date.now()}`,
+      plan_type: dbPlanType, // use mapped planId to pass Supabase ENUM check constraint
       amount: planAmounts[planId] ?? 199,
       amount_in_paise: (planAmounts[planId] ?? 199) * 100,
       expires_at: new Date(expiresAt).toISOString(),
