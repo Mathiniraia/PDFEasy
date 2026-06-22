@@ -5,7 +5,7 @@
  * Actions: Grant Access · Revoke Access
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { signInWithPopup, signOut } from "firebase/auth";
 import { auth, googleProvider } from "../../firebase";
 import {
@@ -13,8 +13,9 @@ import {
   Mail, Clock, Crown, Ban, Zap, Search, CheckCircle,
   XCircle, IndianRupee, Activity, ChevronDown, TrendingUp,
   Calendar, Eye, EyeOff, Lock, FileText, LayoutDashboard,
-  MousePointerClick, AlertCircle, ArrowUpRight, Phone, Download
+  MousePointerClick, AlertCircle, ArrowUpRight, Phone, Download, X
 } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -354,11 +355,23 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
   const [dateFilter, setDateFilter] = useState<string>("all-time");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [showCsvModal, setShowCsvModal] = useState<"users"|"payments"|null>(null);
+  const [chartFilter, setChartFilter] = useState<"all"|"24h"|"7d"|"30d"|"last_month"|"custom">("all");
+  const [chartCustomStart, setChartCustomStart] = useState<string>("");
+  const [chartCustomEnd, setChartCustomEnd] = useState<string>("");
 
   const exportToCSV = () => {
-    if (filteredUsers.length === 0) return;
+    let list = filteredUsers;
+    if (customStartDate) list = list.filter(u => new Date(u.joinedAt) >= new Date(customStartDate));
+    if (customEndDate) {
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+      list = list.filter(u => new Date(u.joinedAt) <= end);
+    }
+    if (list.length === 0) return addToast(false, "No users in this date range");
+
     const headers = ["ID", "Name", "Email", "Phone", "Plan Status", "Usage Count", "Premium Active", "Expires At", "Joined At", "Is Admin"];
-    const rows = filteredUsers.map(u => [
+    const rows = list.map(u => [
       u.id,
       `"${(u.displayName || "").replace(/"/g, '""')}"`,
       `"${(u.email || "").replace(/"/g, '""')}"`,
@@ -379,12 +392,21 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setShowCsvModal(null);
   };
 
   const exportPaymentsToCSV = () => {
-    if (filteredTxns.length === 0) return;
+    let list = filteredTxns;
+    if (customStartDate) list = list.filter(tx => new Date(tx.timestamp) >= new Date(customStartDate));
+    if (customEndDate) {
+      const end = new Date(customEndDate);
+      end.setHours(23, 59, 59, 999);
+      list = list.filter(tx => new Date(tx.timestamp) <= end);
+    }
+    if (list.length === 0) return addToast(false, "No payments in this date range");
+
     const headers = ["ID", "Razorpay Payment ID", "Customer Email", "Plan Purchased", "Amount", "Status", "Date & Time"];
-    const rows = filteredTxns.map(tx => [
+    const rows = list.map(tx => [
       tx.id,
       tx.razorpayPaymentId || "",
       `"${(tx.userName || "").replace(/"/g, '""')}"`,
@@ -402,6 +424,7 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setShowCsvModal(null);
   };
 
   // Manual grant form
@@ -642,7 +665,7 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
             </div>
 
             {/* Mini breakdown */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
                 { label:"Premium Active", val:premiumUsers, cls:"bg-blue-600" },
                 { label:"Free Users",     val:freeUsers,    cls:"bg-neutral-400" },
@@ -657,6 +680,98 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Revenue Chart */}
+            <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm p-6">
+              <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-neutral-900">Total sales over time</h3>
+                  <p className="text-[11px] text-neutral-500 mt-1">Live metrics from all payment gateways</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {chartFilter === "custom" && (
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={chartCustomStart} onChange={e => setChartCustomStart(e.target.value)} className="text-xs px-2 py-1.5 border border-neutral-200 rounded-lg outline-none focus:border-emerald-500 bg-white" />
+                      <span className="text-neutral-400">-</span>
+                      <input type="date" value={chartCustomEnd} onChange={e => setChartCustomEnd(e.target.value)} className="text-xs px-2 py-1.5 border border-neutral-200 rounded-lg outline-none focus:border-emerald-500 bg-white" />
+                    </div>
+                  )}
+                  <select value={chartFilter} onChange={(e) => setChartFilter(e.target.value as any)} className="text-xs font-bold text-neutral-700 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-1.5 outline-none focus:border-emerald-500 cursor-pointer">
+                    <option value="all">All Time</option>
+                    <option value="24h">Last 24 Hours</option>
+                    <option value="7d">Last 7 Days</option>
+                    <option value="30d">Last 30 Days</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="custom">Custom Date</option>
+                  </select>
+                </div>
+              </div>
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={(() => {
+                    const map = new Map<string, number>();
+                    
+                    const now = new Date();
+                    let startLimit: Date | null = null;
+                    let endLimit: Date | null = null;
+
+                    if (chartFilter === "24h") {
+                      startLimit = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                    } else if (chartFilter === "7d") {
+                      startLimit = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    } else if (chartFilter === "30d") {
+                      startLimit = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    } else if (chartFilter === "last_month") {
+                      startLimit = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                      endLimit = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+                    } else if (chartFilter === "custom") {
+                      if (chartCustomStart) startLimit = new Date(chartCustomStart);
+                      if (chartCustomEnd) {
+                        endLimit = new Date(chartCustomEnd);
+                        endLimit.setHours(23, 59, 59, 999);
+                      }
+                    }
+
+                    const filteredTxns = txns.filter(tx => {
+                      const d = new Date(tx.timestamp);
+                      if (startLimit && d < startLimit) return false;
+                      if (endLimit && d > endLimit) return false;
+                      return true;
+                    });
+
+                    filteredTxns.forEach(tx => {
+                      const d = new Date(tx.timestamp).toLocaleDateString("en-CA");
+                      map.set(d, (map.get(d) || 0) + tx.amount);
+                    });
+                    
+                    if (map.size === 0) return [{ date: "No Data", revenue: 0 }];
+
+                    const sorted = Array.from(map.entries()).sort((a,b) => a[0].localeCompare(b[0])).map(([date, revenue]) => ({
+                      date: new Date(date).toLocaleDateString("en-US", { month:"short", day:"numeric" }),
+                      revenue
+                    }));
+                    return sorted;
+                  })()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#a3a3a3" }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#a3a3a3" }} tickFormatter={(val) => `₹${val}`} />
+                    <CartesianGrid vertical={false} stroke="#f5f5f5" />
+                    <RechartsTooltip 
+                      contentStyle={{ borderRadius: "12px", border: "1px solid #e5e5e5", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
+                      itemStyle={{ color: "#10b981", fontWeight: "bold", fontSize: "14px" }}
+                      labelStyle={{ color: "#737373", fontSize: "12px", marginBottom: "4px" }}
+                      formatter={(val: number) => [`₹${val.toLocaleString("en-IN")}`, "Revenue"]}
+                    />
+                    <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
             {/* Two panels: Recent Signups + Recent Payments */}
@@ -818,7 +933,7 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
               
               <div className="flex flex-col items-end gap-1">
                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider">Export Data</span>
-                <button onClick={exportToCSV} className="flex items-center gap-2 px-4 py-2 border-2 border-emerald-500 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer text-xs font-bold uppercase tracking-wider">
+                <button onClick={() => setShowCsvModal("users")} className="flex items-center gap-2 px-4 py-2 border-2 border-emerald-500 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer text-xs font-bold uppercase tracking-wider">
                    <Download size={14} /> Download CSV File
                 </button>
               </div>
@@ -909,9 +1024,15 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
                             <td className="px-4 py-3.5">
                               <div className="flex items-center gap-1.5">
                                 <div className="w-14 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                                  <div className="h-full bg-blue-400 rounded-full" style={{ width:`${Math.min(100,((user.usageCount||0)/3)*100)}%` }} />
+                                  {user.premiumActive ? (
+                                    <div className="h-full bg-emerald-400 rounded-full w-full" />
+                                  ) : (
+                                    <div className="h-full bg-blue-400 rounded-full" style={{ width:`${Math.min(100,((user.usageCount||0)/3)*100)}%` }} />
+                                  )}
                                 </div>
-                                <span className="text-[10px] text-neutral-500 font-medium">{user.usageCount||0}/3</span>
+                                <span className="text-[10px] text-neutral-500 font-medium whitespace-nowrap">
+                                  {user.premiumActive ? "Unlimited" : `${user.usageCount||0}/3`}
+                                </span>
                               </div>
                             </td>
 
@@ -1011,7 +1132,7 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
               </div>
               <div className="flex flex-col items-end gap-1">
                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider">Export Data</span>
-                <button onClick={exportPaymentsToCSV} className="flex items-center gap-2 px-4 py-2 border-2 border-emerald-500 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer text-xs font-bold uppercase tracking-wider">
+                <button onClick={() => setShowCsvModal("payments")} className="flex items-center gap-2 px-4 py-2 border-2 border-emerald-500 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer text-xs font-bold uppercase tracking-wider">
                    <Download size={14} /> Download CSV File
                 </button>
               </div>
@@ -1183,10 +1304,14 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <div className="w-20 h-1.5 bg-neutral-200 rounded-full overflow-hidden">
-                              <div className="h-full bg-blue-400 rounded-full" style={{width:`${Math.min(100,((user.usageCount||0)/3)*100)}%`}} />
+                              {user.premiumActive ? (
+                                <div className="h-full bg-emerald-400 rounded-full w-full" />
+                              ) : (
+                                <div className="h-full bg-blue-400 rounded-full" style={{ width:`${Math.min(100,((user.usageCount||0)/3)*100)}%` }} />
+                              )}
                             </div>
                             <span className="text-[11px] font-black text-neutral-700 w-12 text-right">
-                              {user.usageCount||0} <span className="font-normal text-neutral-400">uses</span>
+                              {user.premiumActive ? "∞" : user.usageCount||0} <span className="font-normal text-neutral-400">uses</span>
                             </span>
                           </div>
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${planBadge(user.planStatus, user.accessRevoked)}`}>
@@ -1198,35 +1323,51 @@ export default function AdminPage({ currentUserEmail, onBack }: AdminPageProps) 
                   )}
                 </div>
 
-                {/* Tool activity breakdown */}
-                <div className="border-t border-neutral-100 pt-4">
-                  <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider mb-3">Tools Accessed (All Time)</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {Object.entries(TOOL_NAMES).map(([slug, name]) => {
-                      const tool = tools.find(t => t.slug === slug);
-                      const count = tool?.count || 0;
-                      return (
-                        <div key={slug} className={`flex items-center gap-2.5 p-3 rounded-xl border ${
-                          count > 0 ? "bg-blue-50 border-blue-200" : "bg-neutral-50 border-neutral-100"
-                        }`}>
-                          <span className="text-base">{TOOL_ICONS[slug]||"📄"}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[11px] font-bold text-neutral-800 truncate">{name}</p>
-                            <p className={`text-[11px] font-black ${count > 0 ? "text-blue-700" : "text-neutral-300"}`}>
-                              {count} {count === 1 ? "use" : "uses"}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+
               </div>
             </div>
           </div>
         )}
 
       </div>
+      {/* ── CSV EXPORT MODAL ─────────────────────────────────────────────── */}
+      {showCsvModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in">
+            <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
+              <h3 className="font-bold text-neutral-900 flex items-center gap-2">
+                <Download size={16} className="text-emerald-600" />
+                Export {showCsvModal === "users" ? "Users" : "Payments"}
+              </h3>
+              <button onClick={() => setShowCsvModal(null)} className="text-neutral-400 hover:text-neutral-700 cursor-pointer">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Select a custom date range to export. Leave dates empty to export all data within your current tab filters.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-neutral-500">Start Date</label>
+                  <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 border border-neutral-200 rounded-lg outline-none focus:border-emerald-500" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-neutral-500">End Date</label>
+                  <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 border border-neutral-200 rounded-lg outline-none focus:border-emerald-500" />
+                </div>
+              </div>
+              <button onClick={showCsvModal === "users" ? exportToCSV : exportPaymentsToCSV}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider py-3 rounded-xl transition shadow-sm mt-2 cursor-pointer">
+                Download CSV File
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -7,7 +7,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   X, Check, Sparkles, ShieldCheck, Loader2,
   Lock, Info, RefreshCw, Mail, Eye, EyeOff,
-  Clock, Calendar, Zap, Chrome, Phone, AlertCircle
+  Clock, Calendar, Zap, Chrome, Phone, AlertCircle, CheckCircle2
 } from "lucide-react";
 import { PaymentPlan } from "../../types";
 import { signInWithPopup, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult, getAdditionalUserInfo } from "firebase/auth";

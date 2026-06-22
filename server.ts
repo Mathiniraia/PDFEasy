@@ -687,6 +687,19 @@ app.get("/api/usage/status", async (req, res) => {
   }
 
   const entry = ipUsageStore[key];
+
+  // Sync to supabase on status fetch to keep dashboard accurate
+  if (email && email.trim() && entry.count > 0) {
+    const encryptedEmail = encryptData(email);
+    supabase
+      .from("crm_users")
+      .update({ usage_count: entry.count })
+      .eq("encrypted_email", encryptedEmail)
+      .then(({ error }) => {
+        if (error) console.warn("Supabase usage sync warning (status fetch):", error.message);
+      });
+  }
+
   let active = isPremiumActive(entry);
 
   // Auto-expire: if plan ended, keep count but clear premium
@@ -793,6 +806,16 @@ app.post("/api/usage/increment", async (req, res) => {
   // First-time users get 3 free uses.
   const LIMIT = 3;
   if (entry.count >= LIMIT) {
+    if (email && email.trim()) {
+      const encryptedEmail = encryptData(email);
+      supabase
+        .from("crm_users")
+        .update({ usage_count: entry.count })
+        .eq("encrypted_email", encryptedEmail)
+        .then(({ error }) => {
+          if (error) console.warn("Supabase usage sync warning (limit block):", error.message);
+        });
+    }
     return res.json({ allowed: false, count: entry.count });
   }
 
