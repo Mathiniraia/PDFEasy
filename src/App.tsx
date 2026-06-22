@@ -1113,6 +1113,7 @@ export default function App() {
                   incrementUsage={handleUsageIncrement}
                   logAction={handleLogAction}
                   onLimitExceeded={() => setIsPaywallOpen(true)}
+                  isPremium={premiumUnlocked}
                 />
               </Suspense>
             </section>
@@ -1146,7 +1147,7 @@ export default function App() {
                 
                 {/* SEO Text Panel */}
                 <div>
-                  <h4 className="text-xs font-bold font-mono tracking-wider text-neutral-400 uppercase mb-3">Enterprise SEO Index</h4>
+                  {/* <h4 className="text-xs font-bold font-mono tracking-wider text-neutral-400 uppercase mb-3">Enterprise SEO Index</h4> */}
                   <p className="text-xs text-neutral-600 leading-relaxed max-w-md font-sans">
                     {currentTool.seoText}
                   </p>

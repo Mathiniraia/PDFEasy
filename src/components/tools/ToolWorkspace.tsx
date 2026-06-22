@@ -28,7 +28,8 @@ export default function ToolWorkspace({
   onLimitExceeded,
   usageCount,
   incrementUsage,
-  logAction
+  logAction,
+  isPremium
 }: ToolWorkspaceProps) {
   // Main states
   // 1 = Dropzone / Interactive Setup, 2 = Processing, 3 = Success / Download Window
@@ -998,14 +999,14 @@ export default function ToolWorkspace({
             </span>
             <div>
               <h2 className="text-sm font-semibold text-neutral-900 flex items-center gap-2">
-                {tool.name} <span className="text-xs font-normal text-neutral-500 bg-white border border-neutral-200 tracking-wider uppercase px-2 py-0.5 rounded-full">Client Processing</span>
+                {tool.name}
               </h2>
               <p className="text-xs text-neutral-500">{tool.description}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-neutral-400">Attempts Today: {usageCount}/3</span>
+            {!isPremium && <span className="text-xs font-mono text-neutral-400">Attempts Today: {usageCount}/3</span>}
             {files.length > 0 && stage === 1 && (
               <button 
                 onClick={resetStates}

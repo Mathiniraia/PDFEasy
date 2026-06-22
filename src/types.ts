@@ -29,6 +29,7 @@ export interface ToolWorkspaceProps {
   incrementUsage: () => Promise<boolean>;
   logAction?: (toolSlug: string, actionType: string) => Promise<void>;
   key?: string;
+  isPremium?: boolean;
 }
 
 export interface PaymentPlan {
