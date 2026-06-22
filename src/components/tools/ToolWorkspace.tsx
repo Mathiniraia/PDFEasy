@@ -924,6 +924,7 @@ export default function ToolWorkspace({
     const numPages = pdf.numPages;
 
     const children: Paragraph[] = [];
+    let totalExtractedTextLength = 0;
 
     for (let i = 1; i <= numPages; i++) {
       const page = await pdf.getPage(i);
@@ -934,6 +935,7 @@ export default function ToolWorkspace({
 
       for (const item of textContent.items) {
         if ('str' in item) {
+          totalExtractedTextLength += item.str.trim().length;
           const y = Math.round(item.transform[5]); // Y coordinate
           if (currentY !== null && Math.abs(currentY - y) > 5) {
             if (currentLine.trim()) {
@@ -957,8 +959,8 @@ export default function ToolWorkspace({
       }
     }
 
-    if (children.length === 0) {
-      children.push(new Paragraph({ children: [new TextRun({ text: "No text found in PDF." })] }));
+    if (totalExtractedTextLength === 0) {
+      children.push(new Paragraph({ children: [new TextRun({ text: "No selectable text found in this PDF. It appears to be a scanned image or flattened document." })] }));
     }
 
     const doc = new Document({
@@ -968,7 +970,8 @@ export default function ToolWorkspace({
       }],
     });
 
-    const docxBlob = await Packer.toBlob(doc);
+    const docxBlobRaw = await Packer.toBlob(doc);
+    const docxBlob = new Blob([docxBlobRaw], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
 
     setOriginalSize(f.size);
     setNewSize(docxBlob.size);
