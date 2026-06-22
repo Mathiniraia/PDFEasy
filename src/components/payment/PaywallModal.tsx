@@ -180,7 +180,7 @@ export default function PaywallModal({
       
       // Trigger welcome email if they are a brand new signup
       if (additionalInfo?.isNewUser && email) {
-        fetch("http://localhost:5173/api/emails/welcome", {
+        fetch("/api/emails/welcome", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: email, displayName: result.user.displayName })
@@ -207,7 +207,7 @@ export default function PaywallModal({
     // We assume any explicit email/password form submission here is a "signup" 
     // because there is no separate login tab in this quick flow.
     // We send the welcome email in the background.
-    fetch("http://localhost:5173/api/emails/welcome", {
+    fetch("/api/emails/welcome", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: emailInput })

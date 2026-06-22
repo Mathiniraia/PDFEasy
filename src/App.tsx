@@ -814,7 +814,7 @@ export default function App() {
                             
                             // Trigger welcome email if they are a brand new signup
                             if (additionalInfo?.isNewUser && credential.user.email) {
-                              fetch("http://localhost:5173/api/emails/welcome", {
+                              fetch("/api/emails/welcome", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
