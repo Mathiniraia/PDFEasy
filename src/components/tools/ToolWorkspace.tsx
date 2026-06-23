@@ -163,12 +163,13 @@ export default function ToolWorkspace({
     try {
       const isJpgToPdf = tool.slug === "jpg-to-pdf";
       const validFiles: PDFFileInfo[] = [];
-      const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB limit
+      const isServerTool = tool.slug === "protect-pdf" || tool.slug === "unlock-pdf";
+      const MAX_FILE_SIZE = isServerTool ? 50 * 1024 * 1024 : 500 * 1024 * 1024; // 50MB for server, 500MB for local
 
       for (const file of rawFiles) {
         // File size guard
         if (file.size > MAX_FILE_SIZE) {
-          setDragError(`File "${file.name}" exceeds the 200MB limit. Please use a smaller file.`);
+          setDragError(`File "${file.name}" exceeds the ${isServerTool ? "50MB" : "500MB"} limit. Please use a smaller file.`);
           return;
         }
 
@@ -818,7 +819,8 @@ export default function ToolWorkspace({
     formData.append("file", pdfBlob, f.name);
     formData.append("password", capturedPassword);
 
-    const response = await fetch("/api/protect-pdf", {
+    const API_BASE = import.meta.env.DEV ? "" : "https://pdfeasy-backend.onrender.com";
+    const response = await fetch(`${API_BASE}/api/protect-pdf`, {
       method: "POST",
       body: formData,
     });
@@ -880,7 +882,8 @@ export default function ToolWorkspace({
     formData.append("file", pdfBlob, f.name);
     formData.append("password", capturedPw);
 
-    const response = await fetch("/api/unlock-pdf", {
+    const API_BASE = import.meta.env.DEV ? "" : "https://pdfeasy-backend.onrender.com";
+    const response = await fetch(`${API_BASE}/api/unlock-pdf`, {
       method: "POST",
       body: formData,
     });
@@ -1159,7 +1162,7 @@ export default function ToolWorkspace({
                   </div>
 
                   <div className="flex flex-wrap gap-4 w-full justify-center">
-                    <span className="stat-badge">Max file size: 500MB</span>
+                    <span className="stat-badge">Max file size: {["protect-pdf", "unlock-pdf"].includes(tool.slug) ? "50MB" : "500MB"}</span>
                     <span className="stat-badge">End-to-End Encrypted</span>
                     <span className="stat-badge">Zero Server Load</span>
                   </div>

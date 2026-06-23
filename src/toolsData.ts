@@ -36,7 +36,7 @@ export const TOOLS: ToolDefinition[] = [
     ],
     faqs: [
       { q: "How are the images exported?", a: "Each PDF page is converted into a high-quality JPEG and offered for direct download inline in your browser." },
-      { q: "What is the maximum file size supported?", a: "Standard file size limits up to 150MB are supported for swift execution." },
+      { q: "What is the maximum file size supported?", a: "Standard file size limits up to 500MB are supported for swift execution (50MB for Unlock/Protect)." },
       { q: "Does this require any installation or registration?", a: "No. This tool is completely online and processes everything without complex installs." }
     ],
     seoText: "Convert PDF pages to JPG images in seconds. Render each vector layout flat into individual graphics, which are perfect for social shares, web content embedding, or offline graphic editing."

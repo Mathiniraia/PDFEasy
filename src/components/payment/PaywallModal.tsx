@@ -34,7 +34,7 @@ const PLANS: PaymentPlan[] = [
     description: "7 days of full access to all PDF tools.",
     benefits: [
       "All PDF tools — no limits",
-      "Files up to 100MB",
+      "Files up to 500MB",
       "Instant secure download",
       "High-speed processing",
     ]
