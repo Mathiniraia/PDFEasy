@@ -1,0 +1,17 @@
+name: Daily Expiry Reminders
+
+on:
+  schedule:
+    # Runs every day at 09:00 UTC (2:30 PM IST)
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Expiry Reminders API
+        run: |
+          curl -X POST https://trustmypdf.in/api/cron/expiry-reminders \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"
