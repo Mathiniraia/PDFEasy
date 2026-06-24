@@ -16,6 +16,7 @@ import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import mammoth from "mammoth";
 import Draggable from "react-draggable";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import JSZip from "jszip";
 import { decryptPDF, isEncrypted as checkIsEncrypted } from "@pdfsmaller/pdf-decrypt";
 import { Document, Packer, Paragraph, TextRun } from "docx";
@@ -80,12 +81,15 @@ export default function ToolWorkspace({
   const [singleFileTotalPages, setSingleFileTotalPages] = useState(0);
 
   // Edit PDF State
-  const [editOverlays, setEditOverlays] = useState<{id: string, text: string, x: number, y: number}[]>([]);
-  const [newOverlayText, setNewOverlayText] = useState("");
+  const [editOverlays, setEditOverlays] = useState<{id: string, text: string, x: number, y: number, fontSize: number}[]>([]);
   
   // Sign PDF State
   const signCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  
+  // Editor Viewport States
+  const [imgRenderWidth, setImgRenderWidth] = useState(0);
+  const [imgRenderHeight, setImgRenderHeight] = useState(0);
 
   // Previews & Encryption States
   const [pdfPreviews, setPdfPreviews] = useState<string[]>([]);
@@ -1069,18 +1073,25 @@ export default function ToolWorkspace({
     const bytesCopy = new Uint8Array(f.pdfBytes);
     const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
     
-    // Overlay text on the first page only for simplicity
     const pages = pdfDoc.getPages();
     const firstPage = pages[0];
-    const { height } = firstPage.getSize();
+    const { width: pdfWidth, height: pdfHeight } = firstPage.getSize();
+    
+    // Map screen coordinates to PDF coordinates
+    const scaleX = pdfWidth / (imgRenderWidth || pdfWidth);
+    const scaleY = pdfHeight / (imgRenderHeight || pdfHeight);
     
     for (const overlay of editOverlays) {
       if (overlay.text.trim()) {
+        const pdfX = overlay.x * scaleX;
+        // In PDF coordinate system, Y=0 is the bottom.
+        // We subtract the text height to align it properly.
+        const pdfY = pdfHeight - (overlay.y * scaleY) - (overlay.fontSize * scaleY);
+        
         firstPage.drawText(overlay.text, {
-          x: overlay.x,
-          // PDF coordinate system originates from bottom-left
-          y: height - overlay.y - 20, 
-          size: 16
+          x: pdfX,
+          y: pdfY, 
+          size: overlay.fontSize * scaleX
         });
       }
     }
@@ -1113,18 +1124,17 @@ export default function ToolWorkspace({
     const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
     
     const pngImage = await pdfDoc.embedPng(dataUrl);
-    const pngDims = pngImage.scale(0.5);
     
     const pages = pdfDoc.getPages();
     const firstPage = pages[0];
-    const { width, height } = firstPage.getSize();
+    const { width: pdfWidth, height: pdfHeight } = firstPage.getSize();
     
-    // Stamp signature at bottom center
+    // The canvas represents the exact bounds of the PDF page, so we overlay it precisely
     firstPage.drawImage(pngImage, {
-      x: width / 2 - pngDims.width / 2,
-      y: 50,
-      width: pngDims.width,
-      height: pngDims.height
+      x: 0,
+      y: 0,
+      width: pdfWidth,
+      height: pdfHeight
     });
     
     const saveBytes = await pdfDoc.save();
@@ -1829,49 +1839,84 @@ export default function ToolWorkspace({
                     {tool.slug === "edit-pdf" && (
                       <div className="flex flex-col gap-4">
                         <div className="flex justify-between items-center pb-2 border-b border-neutral-200">
-                          <label className="text-xs font-semibold text-neutral-800 tracking-wide uppercase">Edit PDF (First Page)</label>
-                        </div>
-                        <div className="flex gap-2 items-center">
-                          <input 
-                            type="text" 
-                            value={newOverlayText}
-                            onChange={(e) => setNewOverlayText(e.target.value)}
-                            placeholder="Type overlay text here..."
-                            className="flex-1 text-xs bg-white border border-neutral-200 rounded-lg px-3 py-2"
-                          />
-                          <button 
-                            onClick={() => {
-                              if (newOverlayText.trim()) {
-                                setEditOverlays([...editOverlays, { id: Date.now().toString(), text: newOverlayText, x: 50, y: 50 }]);
-                                setNewOverlayText("");
-                              }
-                            }}
-                            className="bg-neutral-900 text-white text-xs px-3 py-2 rounded-lg"
-                          >
-                            Add Text
-                          </button>
+                          <label className="text-xs font-semibold text-neutral-800 tracking-wide uppercase">Interactive PDF Editor</label>
                         </div>
                         
-                        <div className="relative w-full h-[400px] border border-neutral-200 bg-white rounded-lg overflow-hidden flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
-                          <p className="absolute text-neutral-300 pointer-events-none select-none top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-sm">Document Preview Plane</p>
-                          {editOverlays.map((overlay, index) => (
-                            <Draggable
-                              key={overlay.id}
-                              defaultPosition={{ x: overlay.x, y: overlay.y }}
-                              onStop={(e, data) => {
-                                const newArr = [...editOverlays];
-                                newArr[index].x = data.x;
-                                newArr[index].y = data.y;
-                                setEditOverlays(newArr);
-                              }}
-                              bounds="parent"
-                            >
-                              <div className="absolute text-lg font-sans font-bold text-black border border-dashed border-blue-400 bg-white/50 p-1 cursor-move">
-                                {overlay.text}
-                              </div>
-                            </Draggable>
-                          ))}
+                        <div className="relative w-full h-[600px] border border-neutral-200 bg-neutral-100 rounded-lg overflow-hidden flex items-center justify-center">
+                          {!pdfPreviews[0] ? (
+                            <p className="text-neutral-400 font-mono text-sm animate-pulse">Rendering preview...</p>
+                          ) : (
+                            <TransformWrapper initialScale={1} minScale={0.5} maxScale={4} centerOnInit>
+                              {({ zoomIn, zoomOut, resetTransform }) => (
+                                <>
+                                  <div className="absolute top-4 right-4 z-10 flex gap-2 bg-white shadow-sm rounded-lg p-1">
+                                    <button onClick={() => zoomIn()} className="p-2 hover:bg-neutral-100 rounded"><Plus size={16} /></button>
+                                    <button onClick={() => zoomOut()} className="p-2 hover:bg-neutral-100 rounded"><Minimize2 size={16} /></button>
+                                    <button onClick={() => resetTransform()} className="p-2 hover:bg-neutral-100 rounded"><RefreshCw size={16} /></button>
+                                  </div>
+                                  <TransformComponent wrapperClass="w-full h-full" contentClass="relative">
+                                    <div 
+                                      className="relative shadow-lg bg-white"
+                                      style={{ width: imgRenderWidth || 'auto', height: imgRenderHeight || 'auto' }}
+                                      onClick={(e) => {
+                                        if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'IMG') {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          const x = e.clientX - rect.left;
+                                          const y = e.clientY - rect.top;
+                                          setEditOverlays([...editOverlays, { id: Date.now().toString(), text: "Double click to edit", x, y, fontSize: 16 }]);
+                                        }
+                                      }}
+                                    >
+                                      <img 
+                                        src={pdfPreviews[0]} 
+                                        className="w-auto h-auto pointer-events-none" 
+                                        alt="Document Page" 
+                                        onLoad={(e) => {
+                                          setImgRenderWidth(e.currentTarget.naturalWidth);
+                                          setImgRenderHeight(e.currentTarget.naturalHeight);
+                                        }}
+                                      />
+                                      {editOverlays.map((overlay, index) => (
+                                        <Draggable
+                                          key={overlay.id}
+                                          defaultPosition={{ x: overlay.x, y: overlay.y }}
+                                          onStop={(e, data) => {
+                                            const newArr = [...editOverlays];
+                                            newArr[index].x = data.x;
+                                            newArr[index].y = data.y;
+                                            setEditOverlays(newArr);
+                                          }}
+                                          bounds="parent"
+                                          cancel=".text-input-field"
+                                        >
+                                          <div className="absolute cursor-move flex items-center group">
+                                            <input
+                                              className="text-input-field bg-transparent border-2 border-transparent hover:border-dashed hover:border-blue-400 focus:border-solid focus:border-blue-500 focus:bg-white/50 outline-none p-1 font-sans font-bold text-black min-w-[100px]"
+                                              style={{ fontSize: `${overlay.fontSize}px` }}
+                                              value={overlay.text}
+                                              onChange={(e) => {
+                                                const newArr = [...editOverlays];
+                                                newArr[index].text = e.target.value;
+                                                setEditOverlays(newArr);
+                                              }}
+                                            />
+                                            <button 
+                                              onClick={() => setEditOverlays(editOverlays.filter(o => o.id !== overlay.id))}
+                                              className="opacity-0 group-hover:opacity-100 absolute -right-6 top-1 text-red-500 hover:text-red-700 bg-white rounded-full shadow-sm p-1"
+                                            >
+                                              <X size={12} />
+                                            </button>
+                                          </div>
+                                        </Draggable>
+                                      ))}
+                                    </div>
+                                  </TransformComponent>
+                                </>
+                              )}
+                            </TransformWrapper>
+                          )}
                         </div>
+                        <p className="text-xs text-neutral-500 font-mono text-center">Click anywhere on the document to add text. Drag to reposition.</p>
                       </div>
                     )}
 
@@ -1879,38 +1924,76 @@ export default function ToolWorkspace({
                     {tool.slug === "sign-pdf" && (
                       <div className="flex flex-col gap-4">
                         <div className="flex justify-between items-center pb-2 border-b border-neutral-200">
-                          <label className="text-xs font-semibold text-neutral-800 tracking-wide uppercase">Draw Your Signature</label>
+                          <label className="text-xs font-semibold text-neutral-800 tracking-wide uppercase">Interactive Signature Editor</label>
                           <button onClick={() => {
                             const canvas = signCanvasRef.current;
                             if (canvas) canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);
-                          }} className="text-xs text-neutral-500 hover:text-black">Clear</button>
+                          }} className="text-xs text-neutral-500 hover:text-black">Clear Signature</button>
                         </div>
-                        <div className="border-2 border-dashed border-neutral-300 rounded-lg bg-white mx-auto relative touch-none cursor-crosshair">
-                          <canvas 
-                            ref={signCanvasRef}
-                            width={400}
-                            height={200}
-                            className="block"
-                            onMouseDown={(e) => {
-                              setIsDrawing(true);
-                              const ctx = signCanvasRef.current?.getContext('2d');
-                              if (ctx) {
-                                ctx.beginPath();
-                                ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-                              }
-                            }}
-                            onMouseMove={(e) => {
-                              if (!isDrawing) return;
-                              const ctx = signCanvasRef.current?.getContext('2d');
-                              if (ctx) {
-                                ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-                                ctx.stroke();
-                              }
-                            }}
-                            onMouseUp={() => setIsDrawing(false)}
-                            onMouseLeave={() => setIsDrawing(false)}
-                          />
+                        
+                        <div className="relative w-full h-[600px] border border-neutral-200 bg-neutral-100 rounded-lg overflow-hidden flex items-center justify-center">
+                          {!pdfPreviews[0] ? (
+                            <p className="text-neutral-400 font-mono text-sm animate-pulse">Rendering preview...</p>
+                          ) : (
+                            <TransformWrapper initialScale={1} minScale={0.5} maxScale={4} centerOnInit disabled={isDrawing}>
+                              {({ zoomIn, zoomOut, resetTransform }) => (
+                                <>
+                                  <div className="absolute top-4 right-4 z-10 flex gap-2 bg-white shadow-sm rounded-lg p-1">
+                                    <button onClick={() => zoomIn()} className="p-2 hover:bg-neutral-100 rounded"><Plus size={16} /></button>
+                                    <button onClick={() => zoomOut()} className="p-2 hover:bg-neutral-100 rounded"><Minimize2 size={16} /></button>
+                                    <button onClick={() => resetTransform()} className="p-2 hover:bg-neutral-100 rounded"><RefreshCw size={16} /></button>
+                                  </div>
+                                  <TransformComponent wrapperClass="w-full h-full" contentClass="relative">
+                                    <div 
+                                      className="relative shadow-lg bg-white"
+                                      style={{ width: imgRenderWidth || 'auto', height: imgRenderHeight || 'auto' }}
+                                    >
+                                      <img 
+                                        src={pdfPreviews[0]} 
+                                        className="w-auto h-auto pointer-events-none" 
+                                        alt="Document Page" 
+                                        onLoad={(e) => {
+                                          setImgRenderWidth(e.currentTarget.naturalWidth);
+                                          setImgRenderHeight(e.currentTarget.naturalHeight);
+                                        }}
+                                      />
+                                      {imgRenderWidth > 0 && imgRenderHeight > 0 && (
+                                        <canvas 
+                                          ref={signCanvasRef}
+                                          width={imgRenderWidth}
+                                          height={imgRenderHeight}
+                                          className="absolute top-0 left-0 w-full h-full touch-none cursor-crosshair"
+                                          onMouseDown={(e) => {
+                                            setIsDrawing(true);
+                                            const ctx = signCanvasRef.current?.getContext('2d');
+                                            if (ctx) {
+                                              ctx.lineWidth = 3;
+                                              ctx.lineCap = "round";
+                                              ctx.strokeStyle = "#172554"; // Dark blue ink
+                                              ctx.beginPath();
+                                              ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                                            }
+                                          }}
+                                          onMouseMove={(e) => {
+                                            if (!isDrawing) return;
+                                            const ctx = signCanvasRef.current?.getContext('2d');
+                                            if (ctx) {
+                                              ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                                              ctx.stroke();
+                                            }
+                                          }}
+                                          onMouseUp={() => setIsDrawing(false)}
+                                          onMouseLeave={() => setIsDrawing(false)}
+                                        />
+                                      )}
+                                    </div>
+                                  </TransformComponent>
+                                </>
+                              )}
+                            </TransformWrapper>
+                          )}
                         </div>
+                        <p className="text-xs text-neutral-500 font-mono text-center">Draw your signature directly onto the document.</p>
                       </div>
                     )}
 
