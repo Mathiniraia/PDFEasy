@@ -2033,12 +2033,12 @@ export default function ToolWorkspace({
                                             className="w-auto h-auto pointer-events-none block" 
                                             alt={`Page ${pageIndex + 1}`} 
                                             onLoad={(e) => {
+                                              const target = e.currentTarget as HTMLImageElement;
+                                              const width = target.naturalWidth;
+                                              const height = target.naturalHeight;
                                               setPageDimensions(prev => ({
                                                 ...prev,
-                                                [pageIndex]: {
-                                                  width: e.currentTarget.naturalWidth,
-                                                  height: e.currentTarget.naturalHeight
-                                                }
+                                                [pageIndex]: { width, height }
                                               }));
                                             }}
                                           />
@@ -2124,8 +2124,9 @@ export default function ToolWorkspace({
                                         className="w-auto h-auto pointer-events-none" 
                                         alt="Document Page" 
                                         onLoad={(e) => {
-                                          setImgRenderWidth(e.currentTarget.naturalWidth);
-                                          setImgRenderHeight(e.currentTarget.naturalHeight);
+                                          const target = e.currentTarget as HTMLImageElement;
+                                          setImgRenderWidth(target.naturalWidth);
+                                          setImgRenderHeight(target.naturalHeight);
                                         }}
                                       />
                                       {imgRenderWidth > 0 && imgRenderHeight > 0 && (
