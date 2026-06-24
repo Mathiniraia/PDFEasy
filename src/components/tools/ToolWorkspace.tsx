@@ -12,8 +12,11 @@ import {
 } from "lucide-react";
 import { PDFDocument, degrees } from "pdf-lib";
 import { PDFFileInfo, ToolWorkspaceProps } from "../../types";
-import JSZip from "jszip";
 import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
+import mammoth from "mammoth";
+import Draggable from "react-draggable";
+import JSZip from "jszip";
 import { decryptPDF, isEncrypted as checkIsEncrypted } from "@pdfsmaller/pdf-decrypt";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 
@@ -76,6 +79,14 @@ export default function ToolWorkspace({
   // Local helper for page counts of single files
   const [singleFileTotalPages, setSingleFileTotalPages] = useState(0);
 
+  // Edit PDF State
+  const [editOverlays, setEditOverlays] = useState<{id: string, text: string, x: number, y: number}[]>([]);
+  const [newOverlayText, setNewOverlayText] = useState("");
+  
+  // Sign PDF State
+  const signCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
   // Previews & Encryption States
   const [pdfPreviews, setPdfPreviews] = useState<string[]>([]);
   const [isGeneratingPreviews, setIsGeneratingPreviews] = useState(false);
@@ -128,6 +139,8 @@ export default function ToolWorkspace({
     setAiSummary("");
     setAiError("");
     setAiLoading(false);
+    setEditOverlays([]);
+    setIsDrawing(false);
   };
 
   // Drag & drop handlers
@@ -187,6 +200,11 @@ export default function ToolWorkspace({
             setDragError("Only PNG or JPEG/JPG images are supported.");
             return;
           }
+        } else if (tool.slug === "word-to-pdf") {
+          if (!file.name.endsWith(".doc") && !file.name.endsWith(".docx") && file.type !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document" && file.type !== "application/msword") {
+            setDragError("Only Word documents (.doc, .docx) are supported.");
+            return;
+          }
         } else {
           if (file.type !== "application/pdf" && !file.name.endsWith(".pdf")) {
             setDragError("Only PDF files are accepted. Please upload a valid PDF.");
@@ -199,7 +217,7 @@ export default function ToolWorkspace({
         let pageCount = 0;
         let fileIsLocked = false;
 
-        if (!isJpgToPdf) {
+        if (!isJpgToPdf && tool.slug !== "word-to-pdf") {
           try {
             // Use ignoreEncryption:true to get page count even from encrypted PDFs.
             // Copy bytes to avoid ArrayBuffer detachment issues.
@@ -485,6 +503,15 @@ export default function ToolWorkspace({
       } else if (tool.slug === "pdf-to-word") {
         setProcessingMessage("Extracting text and generating Microsoft Word document...");
         await doPdfToWord();
+      } else if (tool.slug === "word-to-pdf") {
+        setProcessingMessage("Parsing Word document and generating PDF rendering...");
+        await doWordToPdf();
+      } else if (tool.slug === "edit-pdf") {
+        setProcessingMessage("Applying text overlays directly into PDF binary stream...");
+        await doEditPdf();
+      } else if (tool.slug === "sign-pdf") {
+        setProcessingMessage("Embedding signature vector onto PDF document...");
+        await doSignPdf();
       }
     } catch (err: any) {
       console.error("[Trust My PDF] CAUGHT ERROR:", err);
@@ -992,6 +1019,125 @@ export default function ToolWorkspace({
     setStage(3);
   };
 
+  // 11. WORD TO PDF ENGINE
+  const doWordToPdf = async () => {
+    const f = files[0];
+    if (!f || !f.pdfBytes) throw new Error("No Word document loaded.");
+    
+    // Parse docx to HTML using mammoth
+    const result = await mammoth.convertToHtml({ arrayBuffer: f.pdfBytes });
+    const html = result.value || "<p>No readable content found.</p>";
+    
+    // Render HTML in hidden container
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    div.style.width = "800px";
+    div.style.padding = "40px";
+    div.style.background = "white";
+    div.style.color = "black";
+    div.style.position = "absolute";
+    div.style.left = "-9999px";
+    div.style.top = "-9999px";
+    div.style.fontFamily = "sans-serif";
+    document.body.appendChild(div);
+    
+    // Use jsPDF + html2canvas to convert
+    const pdf = new jsPDF("p", "pt", "a4");
+    await pdf.html(div, {
+      callback: function (doc) {
+        const finalBlob = doc.output("blob");
+        document.body.removeChild(div);
+        setOriginalSize(f.size);
+        setNewSize(finalBlob.size);
+        setPageCountOutput(doc.internal.getNumberOfPages());
+        setOutputBlob(finalBlob);
+        setOutputFileName(`${f.name.replace(/\.docx?$/i, "")}.pdf`);
+        setStage(3);
+      },
+      x: 10,
+      y: 10,
+      width: 575,
+      windowWidth: 800
+    });
+  };
+
+  // 12. EDIT PDF ENGINE
+  const doEditPdf = async () => {
+    const f = files[0];
+    if (!f || !f.pdfBytes) throw new Error("No PDF loaded.");
+    
+    const bytesCopy = new Uint8Array(f.pdfBytes);
+    const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
+    
+    // Overlay text on the first page only for simplicity
+    const pages = pdfDoc.getPages();
+    const firstPage = pages[0];
+    const { height } = firstPage.getSize();
+    
+    for (const overlay of editOverlays) {
+      if (overlay.text.trim()) {
+        firstPage.drawText(overlay.text, {
+          x: overlay.x,
+          // PDF coordinate system originates from bottom-left
+          y: height - overlay.y - 20, 
+          size: 16
+        });
+      }
+    }
+    
+    const saveBytes = await pdfDoc.save();
+    const finalBlob = new Blob([saveBytes], { type: "application/pdf" });
+    
+    setOriginalSize(f.size);
+    setNewSize(saveBytes.length);
+    setPageCountOutput(pages.length);
+    setOutputBlob(finalBlob);
+    setOutputFileName(`edited_${f.name}`);
+    setStage(3);
+  };
+
+  // 13. SIGN PDF ENGINE
+  const doSignPdf = async () => {
+    const f = files[0];
+    if (!f || !f.pdfBytes) throw new Error("No PDF loaded.");
+    if (!signCanvasRef.current) throw new Error("Signature not detected.");
+    
+    const canvas = signCanvasRef.current;
+    const dataUrl = canvas.toDataURL("image/png");
+    
+    // Check if empty canvas
+    const isBlank = !canvas.getContext('2d')?.getImageData(0,0,canvas.width,canvas.height).data.some(channel => channel !== 0);
+    if (isBlank) throw new Error("Please draw your signature before compiling.");
+
+    const bytesCopy = new Uint8Array(f.pdfBytes);
+    const pdfDoc = await PDFDocument.load(bytesCopy, { ignoreEncryption: true });
+    
+    const pngImage = await pdfDoc.embedPng(dataUrl);
+    const pngDims = pngImage.scale(0.5);
+    
+    const pages = pdfDoc.getPages();
+    const firstPage = pages[0];
+    const { width, height } = firstPage.getSize();
+    
+    // Stamp signature at bottom center
+    firstPage.drawImage(pngImage, {
+      x: width / 2 - pngDims.width / 2,
+      y: 50,
+      width: pngDims.width,
+      height: pngDims.height
+    });
+    
+    const saveBytes = await pdfDoc.save();
+    const finalBlob = new Blob([saveBytes], { type: "application/pdf" });
+    
+    setOriginalSize(f.size);
+    setNewSize(saveBytes.length);
+    setPageCountOutput(pages.length);
+    setOutputBlob(finalBlob);
+    setOutputFileName(`signed_${f.name}`);
+    setStage(3);
+  };
+
   // Download Trigger helper
   const handleDownloadFile = () => {
     if (!outputBlob) return;
@@ -1108,30 +1254,7 @@ export default function ToolWorkspace({
           {/* Stage 1: Active Setup / Dropzone */}
           {stage === 1 && (
             <div>
-              {["word-to-pdf", "edit-pdf", "sign-pdf"].includes(tool.slug) ? (
-                // COMING SOON WORKSPACE
-                <div className="flex flex-col items-center justify-center text-center py-12 px-6 max-w-md mx-auto space-y-6">
-                  <div className="w-16 h-16 bg-neutral-100 border border-neutral-200 rounded-full flex items-center justify-center text-neutral-500">
-                    <Sparkles size={28} className="text-neutral-500 animate-pulse" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-neutral-900">{tool.name}</h2>
-                    <p className="text-xs text-neutral-400 mt-2 tracking-wide uppercase font-mono bg-neutral-100 px-3 py-1 rounded-full inline-block">Coming Soon</p>
-                    <p className="text-sm text-neutral-500 mt-4 leading-relaxed">
-                      We are currently developing our new high-speed, local browser engine for <strong>{tool.name}</strong>. This feature will be available in the upcoming update.
-                    </p>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      window.history.pushState(null, "", "/");
-                      window.dispatchEvent(new PopStateEvent("popstate"));
-                    }}
-                    className="bg-neutral-900 hover:bg-neutral-800 text-white font-medium px-6 py-2 rounded-xl text-sm transition shadow-sm cursor-pointer"
-                  >
-                    Go Back to Dashboard
-                  </button>
-                </div>
-              ) : files.length === 0 ? (
+              {files.length === 0 ? (
                 // DROPZONE COMPONENT
                 <div className="flex flex-col items-center gap-6 w-full p-4">
                   <div className="text-center">
@@ -1156,7 +1279,7 @@ export default function ToolWorkspace({
                       onChange={handleFileChange}
                       className="hidden" 
                       multiple={tool.slug === "merge-pdf" || tool.slug === "jpg-to-pdf"}
-                      accept={tool.slug === "jpg-to-pdf" ? "image/jpeg,image/jpg,image/png" : "application/pdf"}
+                      accept={tool.slug === "jpg-to-pdf" ? "image/jpeg,image/jpg,image/png" : tool.slug === "word-to-pdf" ? ".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/pdf"}
                     />
                     <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center border border-neutral-100/85">
                       <svg className="w-8 h-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1698,6 +1821,95 @@ export default function ToolWorkspace({
                               The password is used locally to open the file and export a decrypted copy.
                             </p>
                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* EDIT PDF CONTROLS */}
+                    {tool.slug === "edit-pdf" && (
+                      <div className="flex flex-col gap-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-neutral-200">
+                          <label className="text-xs font-semibold text-neutral-800 tracking-wide uppercase">Edit PDF (First Page)</label>
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <input 
+                            type="text" 
+                            value={newOverlayText}
+                            onChange={(e) => setNewOverlayText(e.target.value)}
+                            placeholder="Type overlay text here..."
+                            className="flex-1 text-xs bg-white border border-neutral-200 rounded-lg px-3 py-2"
+                          />
+                          <button 
+                            onClick={() => {
+                              if (newOverlayText.trim()) {
+                                setEditOverlays([...editOverlays, { id: Date.now().toString(), text: newOverlayText, x: 50, y: 50 }]);
+                                setNewOverlayText("");
+                              }
+                            }}
+                            className="bg-neutral-900 text-white text-xs px-3 py-2 rounded-lg"
+                          >
+                            Add Text
+                          </button>
+                        </div>
+                        
+                        <div className="relative w-full h-[400px] border border-neutral-200 bg-white rounded-lg overflow-hidden flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+                          <p className="absolute text-neutral-300 pointer-events-none select-none top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-sm">Document Preview Plane</p>
+                          {editOverlays.map((overlay, index) => (
+                            <Draggable
+                              key={overlay.id}
+                              defaultPosition={{ x: overlay.x, y: overlay.y }}
+                              onStop={(e, data) => {
+                                const newArr = [...editOverlays];
+                                newArr[index].x = data.x;
+                                newArr[index].y = data.y;
+                                setEditOverlays(newArr);
+                              }}
+                              bounds="parent"
+                            >
+                              <div className="absolute text-lg font-sans font-bold text-black border border-dashed border-blue-400 bg-white/50 p-1 cursor-move">
+                                {overlay.text}
+                              </div>
+                            </Draggable>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SIGN PDF CONTROLS */}
+                    {tool.slug === "sign-pdf" && (
+                      <div className="flex flex-col gap-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-neutral-200">
+                          <label className="text-xs font-semibold text-neutral-800 tracking-wide uppercase">Draw Your Signature</label>
+                          <button onClick={() => {
+                            const canvas = signCanvasRef.current;
+                            if (canvas) canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);
+                          }} className="text-xs text-neutral-500 hover:text-black">Clear</button>
+                        </div>
+                        <div className="border-2 border-dashed border-neutral-300 rounded-lg bg-white mx-auto relative touch-none cursor-crosshair">
+                          <canvas 
+                            ref={signCanvasRef}
+                            width={400}
+                            height={200}
+                            className="block"
+                            onMouseDown={(e) => {
+                              setIsDrawing(true);
+                              const ctx = signCanvasRef.current?.getContext('2d');
+                              if (ctx) {
+                                ctx.beginPath();
+                                ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                              }
+                            }}
+                            onMouseMove={(e) => {
+                              if (!isDrawing) return;
+                              const ctx = signCanvasRef.current?.getContext('2d');
+                              if (ctx) {
+                                ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+                                ctx.stroke();
+                              }
+                            }}
+                            onMouseUp={() => setIsDrawing(false)}
+                            onMouseLeave={() => setIsDrawing(false)}
+                          />
                         </div>
                       </div>
                     )}
