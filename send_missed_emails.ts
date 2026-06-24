@@ -26,19 +26,22 @@ function decryptData(text: string): string {
 
 async function sendMissedEmails() {
   console.log("Fetching all users from Supabase...");
-  const { data: users, error } = await supabase.from("crm_users").select("*");
+  const { data: allUsers, error } = await supabase.from("crm_users").select("*");
 
   if (error) {
     console.error("Failed to fetch users:", error);
     return;
   }
 
-  if (!users || users.length === 0) {
+  if (!allUsers || allUsers.length === 0) {
     console.log("No users found.");
     return;
   }
 
-  console.log(`Found ${users.length} users. Decrypting emails and triggering Welcome API on Render...`);
+  // Get the last 5 users only
+  const users = allUsers.slice(-5);
+
+  console.log(`Sending to the last ${users.length} users. Decrypting emails and triggering Welcome API...`);
 
   let successCount = 0;
   let failCount = 0;
