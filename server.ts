@@ -117,9 +117,9 @@ app.post("/api/emails/welcome", async (req, res) => {
     if (resendErr) throw new Error(resendErr.message);
     console.log(`[Email] Welcome email sent to ${email}`);
     res.json({ success: true });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[Email Error] Failed to send welcome email:", error);
-    res.status(500).json({ error: "Failed to send email" });
+    res.status(500).json({ error: "Failed to send email", details: error.message || String(error) });
   }
 });
 
