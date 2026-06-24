@@ -1,6 +1,6 @@
 /**
  * AdminPage.tsx — Trust My PDF Built-in Admin Dashboard
- * Route: /admin  |  Access: mathinirai.a@gmail.com only
+ * Route: /admin  |  Access: trustmypdf@gmail.com only
  * Shows: Users · Payments · Tool Analytics · Activity Logs
  * Actions: Grant Access · Revoke Access
  */
@@ -19,7 +19,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsToolti
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const ADMIN_EMAIL  = "mathinirai.a@gmail.com";
+const ADMIN_EMAIL  = "trustmypdf@gmail.com";
 const ADMIN_SECRET = "pdfeasy-admin-secret-2024";
 const ADMIN_PASS   = "pdfeasy-admin-2024";
 

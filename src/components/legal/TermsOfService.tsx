@@ -93,7 +93,7 @@ export default function TermsOfService() {
             If you have any questions about these Terms, please contact us:
           </p>
           <p>
-            <strong>Email:</strong> mathinirai.a@gmail.com
+            <strong>Email:</strong> trustmypdf@gmail.com
           </p>
         </article>
       </div>

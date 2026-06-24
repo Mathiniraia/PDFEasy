@@ -17,7 +17,7 @@ const ADMIN_SECRET = "pdfeasy-admin-secret-2024";
 const API_BASE = "";  // same origin — works on both local and production
 
 export function isAdminEmail(email: string | null): boolean {
-  const ADMIN_EMAILS = ["mathinirai.a@gmail.com"];
+  const ADMIN_EMAILS = ["trustmypdf@gmail.com"];
   if (!email) return false;
   return ADMIN_EMAILS.map(e => e.toLowerCase()).includes(email.trim().toLowerCase());
 }

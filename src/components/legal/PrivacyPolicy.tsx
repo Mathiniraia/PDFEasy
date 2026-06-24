@@ -83,7 +83,7 @@ export default function PrivacyPolicy() {
             If you have any questions about this Privacy Policy or our data practices, please reach out directly:
           </p>
           <p>
-            <strong>Email:</strong> mathinirai.a@gmail.com
+            <strong>Email:</strong> trustmypdf@gmail.com
           </p>
         </article>
       </div>

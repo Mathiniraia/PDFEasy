@@ -379,7 +379,7 @@ export default function App() {
           mode: "cors",
           headers: {
             "Content-Type": "application/json",
-            "x-admin-email": "mathinirai.a@gmail.com",
+            "x-admin-email": "trustmypdf@gmail.com",
           },
           body: JSON.stringify({
             userId: userId,
