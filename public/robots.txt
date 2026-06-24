@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://pdfeasy.tech/sitemap.xml
+Sitemap: https://trustmypdf.in/sitemap.xml
