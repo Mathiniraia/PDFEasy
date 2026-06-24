@@ -76,23 +76,22 @@ function buildEmailTemplate(title: string, bodyHtml: string) {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <style>
-        body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; -webkit-font-smoothing: antialiased; }
-        .wrapper { width: 100%; table-layout: fixed; background-color: #f8fafc; padding-bottom: 40px; }
-        .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; font-family: sans-serif; color: #334155; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); margin-top: 40px; }
-        .header { padding: 30px; text-align: center; border-bottom: 1px solid #f1f5f9; background: linear-gradient(90deg, #eff6ff 0%, #fdf4ff 100%); border-top: 4px solid #6366f1; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 800; background: -webkit-linear-gradient(45deg, #4f46e5, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 0.5px; }
+        body { margin: 0; padding: 0; background-color: #f9fafb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+        .wrapper { width: 100%; table-layout: fixed; background-color: #f9fafb; padding-bottom: 40px; }
+        .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; color: #171717; border-radius: 8px; overflow: hidden; border: 1px solid #e5e5e5; margin-top: 40px; }
+        .header { padding: 30px; text-align: left; border-bottom: 1px solid #e5e5e5; }
+        .logo-box { background-color: #000000; color: #ffffff; font-weight: 900; font-size: 20px; padding: 4px 10px; border-radius: 4px; display: inline-block; vertical-align: middle; }
+        .logo-text { font-weight: 800; font-size: 22px; color: #000000; display: inline-block; vertical-align: middle; margin-left: 10px; letter-spacing: -0.5px; }
         .content { padding: 40px 30px; line-height: 1.6; font-size: 16px; }
-        .content h2 { color: #0f172a; font-size: 22px; margin-top: 0; margin-bottom: 20px; font-weight: 700; }
-        .content p { margin-top: 0; margin-bottom: 20px; }
+        .content h2 { color: #000000; font-size: 24px; margin-top: 0; margin-bottom: 20px; font-weight: 700; letter-spacing: -0.5px; }
+        .content p { margin-top: 0; margin-bottom: 20px; color: #404040; }
         .button-wrap { text-align: center; margin: 35px 0; }
-        .button { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2); }
-        .card { background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 25px; border-radius: 12px; margin: 30px 0; text-align: center; }
-        .card-danger { background-color: #fef2f2; border: 1px solid #fecaca; padding: 25px; border-radius: 12px; margin: 30px 0; text-align: center; }
-        .card-success { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 25px; border-radius: 12px; margin: 30px 0; text-align: center; }
-        .card h3, .card-danger h3, .card-success h3 { margin-top: 0; margin-bottom: 10px; font-size: 18px; }
-        .card-danger h3 { color: #b91c1c; }
-        .card-success h3 { color: #15803d; }
-        .footer { text-align: center; padding: 30px; font-size: 13px; color: #64748b; }
+        .button { background-color: #000000; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 16px; }
+        .card { background-color: #ffffff; border: 1px solid #e5e5e5; padding: 25px; border-radius: 8px; margin: 30px 0; text-align: center; }
+        .card-danger { background-color: #fff1f2; border: 1px solid #fecdd3; padding: 25px; border-radius: 8px; margin: 30px 0; text-align: center; }
+        .card-success { background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 25px; border-radius: 8px; margin: 30px 0; text-align: center; }
+        .card h3, .card-danger h3, .card-success h3 { margin-top: 0; margin-bottom: 10px; font-size: 18px; color: #000000; }
+        .footer { text-align: center; padding: 30px; font-size: 13px; color: #737373; }
       </style>
     </head>
     <body>
@@ -100,7 +99,8 @@ function buildEmailTemplate(title: string, bodyHtml: string) {
         <table class="main" width="100%">
           <tr>
             <td class="header">
-              <h1>Trust My PDF</h1>
+              <div class="logo-box">P</div>
+              <div class="logo-text">Trust My PDF</div>
             </td>
           </tr>
           <tr>
